@@ -26,52 +26,6 @@ function showPage(page) {
 document.querySelectorAll("[data-page]").forEach(el => el.addEventListener("click", () => showPage(el.dataset.page)));
 document.getElementById("menu-toggle").addEventListener("click", () => document.getElementById("sidebar").classList.toggle("open"));
 
-function mountAuth() {
-  const overlay = document.createElement("div");
-  overlay.id = "auth-gate";
-  overlay.innerHTML = `
-    <div class="auth-card">
-      <div class="auth-brand"><span class="brand-mark">S</span><strong>SONI<span>VOX</span></strong></div>
-      <div class="eyebrow">YOUR PRIVATE VOICE STUDIO</div>
-      <h1>Welcome to <span>SONIVOX.</span></h1>
-      <p>Sign in or create an account to access your voice workspace.</p>
-      <form id="auth-form">
-        <label for="auth-email">EMAIL ADDRESS</label>
-        <input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com">
-        <label for="auth-password">PASSWORD</label>
-        <input id="auth-password" type="password" autocomplete="current-password" minlength="8" required placeholder="At least 8 characters">
-        <button class="primary-button full-button" id="signin-button" type="submit">Sign in</button>
-        <button class="secondary-button full-button" id="signup-button" type="button">Create an account</button>
-      </form>
-      <small id="auth-note">Your voice samples stay private to your account.</small>
-    </div>`;
-  document.body.appendChild(overlay);
-  document.getElementById("auth-form").addEventListener("submit", async event => {
-    event.preventDefault();
-    await authenticate("signin");
-  });
-  document.getElementById("signup-button").addEventListener("click", () => authenticate("signup"));
-}
-async function authenticate(mode) {
-  const email = document.getElementById("auth-email").value.trim();
-  const password = document.getElementById("auth-password").value;
-  if (!email || password.length < 8) return notify("Enter a valid email and a password with at least 8 characters.");
-  const button = document.getElementById(mode === "signin" ? "signin-button" : "signup-button");
-  button.disabled = true;
-  button.textContent = mode === "signin" ? "Signing in…" : "Creating account…";
-  const result = mode === "signin"
-    ? await supabase.auth.signInWithPassword({email,password})
-    : await supabase.auth.signUp({email,password});
-  button.disabled = false;
-  button.textContent = mode === "signin" ? "Sign in" : "Create an account";
-  if (result.error) return notify(result.error.message);
-  if (mode === "signup" && !result.data.session) {
-    notify("Account created. Check your email to confirm, then sign in.");
-    return;
-  }
-  currentSession = result.data.session;
-  await enterWorkspace();
-}
 async function enterWorkspace() {
   document.getElementById("auth-gate")?.remove();
   document.getElementById("app").classList.remove("app-locked");
@@ -93,9 +47,7 @@ async function enterWorkspace() {
 function lockWorkspace() {
   currentSession = null;
   voices = [];
-  document.getElementById("auth-gate")?.remove();
-  document.getElementById("app").classList.add("app-locked");
-  mountAuth();
+  location.replace("/signin");
 }
 async function loadVoices() {
   const {data,error} = await supabase.from("sonivox_voices").select("id,name,sample_path,created_at").order("created_at",{ascending:false});
@@ -259,15 +211,12 @@ async function init() {
     currentSession = session;
     await enterWorkspace();
   } else {
-    lockWorkspace();
+    location.replace("/signin");
+    return;
   }
   supabase.auth.onAuthStateChange(async (_event,sessionNow) => {
-    if (sessionNow) {
-      currentSession = sessionNow;
-      if (!document.getElementById("auth-gate")) await enterWorkspace();
-    } else if (currentSession) {
-      lockWorkspace();
-    }
+    if (sessionNow) currentSession = sessionNow;
+    else if (currentSession) lockWorkspace();
   });
 }
 init().catch(error => notify("Could not start SONIVOX: " + error.message));
