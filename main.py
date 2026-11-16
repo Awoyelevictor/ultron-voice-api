@@ -5,7 +5,8 @@ import time
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -34,7 +35,7 @@ def get_voice_path() -> str:
 
 @app.get("/")
 async def home():
-    return {"service": "ULTRON Voice API", "status": "online"}
+    return FileResponse("web/index.html")
 
 
 @app.get("/health")
@@ -161,3 +162,7 @@ async def speak(data: SpeechRequest, x_api_key: str = Header(default="")):
 
     logger.error("TTS request failed after retries (last_status=%s)", last_status)
     raise HTTPException(status_code=502, detail="TTS provider failed after retry")
+
+
+# SONIVOX web interface assets; the legacy /speak API remains unchanged.
+app.mount("/assets", StaticFiles(directory="web/assets"), name="assets")
