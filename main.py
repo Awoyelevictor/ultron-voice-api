@@ -68,6 +68,16 @@ async def home():
     return FileResponse("web/index.html")
 
 
+@app.get("/signin")
+async def sign_in_page():
+    return FileResponse("web/signin.html")
+
+
+@app.get("/signup")
+async def sign_up_page():
+    return FileResponse("web/signup.html")
+
+
 @app.get("/api/config")
 async def public_config():
     if not SUPABASE_URL or not SUPABASE_PUBLISHABLE_KEY:
