@@ -35,3 +35,10 @@
 .auth-page .auth-privacy{margin-top:10px}
 .auth-page .auth-card form{margin-bottom:6px}
 .auth-page .auth-card button:disabled{opacity:.65;cursor:wait}
+
+.auth-divider{display:flex;align-items:center;gap:12px;margin:19px 0;color:#71829a;font-size:9px;letter-spacing:1.3px;font-weight:700}
+.auth-divider:before,.auth-divider:after{content:"";height:1px;background:#28364b;flex:1}
+.google-button{width:100%;height:44px;display:flex;align-items:center;justify-content:center;gap:11px;border:1px solid #34445d;border-radius:9px;background:#111c2c;color:#edf3fc;font:600 12px var(--font);cursor:pointer;transition:border-color .2s,background .2s}
+.google-button:hover{border-color:#759fff;background:#17263c}
+.google-button:disabled{opacity:.65;cursor:wait}
+.google-g{font:700 19px Arial,sans-serif;background:conic-gradient(from -45deg,#4285f4 0 25%,#34a853 0 50%,#fbbc05 0 75%,#ea4335 0);background-clip:text;-webkit-background-clip:text;color:transparent}
