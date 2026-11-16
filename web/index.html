@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080b12">
+  <meta name="description" content="SONIVOX — give every voice a new dimension.">
+  <title>SONIVOX — Voice without boundaries</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <div id="app">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#" data-page="home"><span class="brand-mark">S</span><span>SONI<span class="brand-accent">VOX</span></span></a>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav class="nav">
+        <button class="nav-link active" data-page="dashboard"><span class="nav-icon">◫</span>Overview</button>
+        <button class="nav-link" data-page="voices"><span class="nav-icon">◉</span>My voices</button>
+        <button class="nav-link" data-page="keys"><span class="nav-icon">⌘</span>API keys</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="plan-card"><div class="plan-top"><span class="plan-dot"></span> STARTER WORKSPACE</div><p>Your voice studio is ready to take shape.</p><button class="text-button" data-page="dashboard">Open studio <span>↗</span></button></div>
+        <div class="profile"><div class="avatar">V</div><div class="profile-copy"><strong>Guest workspace</strong><small>Preview mode</small></div><span class="more">•••</span></div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-menu" id="menu-toggle" aria-label="Open menu">☰</button>
+        <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="crumb">Overview</strong></div>
+        <div class="top-actions"><span class="status-pill"><i></i> API preview</span><button class="help-button" title="Help">?</button><button class="user-chip">V</button></div>
+      </header>
+      <section class="page" id="page-dashboard">
+        <div class="welcome-row"><div><div class="eyebrow">YOUR VOICE WORKSPACE</div><h1>Make your words <span>sound different.</span></h1><p class="subheading">Create natural-sounding speech with voices that feel unmistakably human.</p></div><div class="date-chip"><span class="live-dot"></span> YOUR STUDIO</div></div>
+        <div class="stats-grid">
+          <article class="stat-card"><div class="stat-label">VOICE PROFILES <span>◉</span></div><div class="stat-value">—</div><div class="stat-note">Your saved voices</div></article>
+          <article class="stat-card"><div class="stat-label">GENERATIONS <span>↗</span></div><div class="stat-value">—</div><div class="stat-note">Audio created this month</div></article>
+          <article class="stat-card"><div class="stat-label">CHARACTERS USED <span>⌁</span></div><div class="stat-value">—</div><div class="stat-note">Usage will appear here</div></article>
+        </div>
+        <div class="studio-layout">
+          <section class="panel composer">
+            <div class="panel-heading"><div><div class="eyebrow">SPEECH PLAYGROUND</div><h2>Turn text into speech</h2></div><span class="soft-tag">01 / CREATE</span></div>
+            <label class="field-label" for="speech-text">YOUR SCRIPT <span id="char-count">0 / 1,000</span></label>
+            <textarea id="speech-text" maxlength="1000" placeholder="Type or paste something you want to hear...&#10;&#10;Every great voice starts with a few words."></textarea>
+            <div class="field-row"><div class="field-group"><label class="field-label" for="voice-select">VOICE</label><select id="voice-select"><option value="">No voice profile yet</option></select></div><div class="field-group"><label class="field-label" for="language-select">LANGUAGE</label><select id="language-select"><option value="eng">English</option><option value="yor">Yoruba</option><option value="hau">Hausa</option><option value="ibo">Igbo</option><option value="ful">Fulfulde</option></select></div></div>
+            <button class="primary-button full-button" id="generate-button" disabled><span>✦</span> Generate speech <span class="button-arrow">→</span></button>
+            <p class="microcopy">Speech generation becomes available after your account and voice provider are connected.</p>
+          </section>
+          <aside class="panel output-panel"><div class="panel-heading"><div><div class="eyebrow">OUTPUT</div><h2>Your audio</h2></div><span class="output-icon">♫</span></div><div class="empty-audio"><div class="audio-orb"><span>♫</span></div><strong>Your next sound starts here</strong><p>Generated audio will appear here, ready to play and download.</p></div><div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="output-footer"><span>WAV AUDIO</span><span>—:——</span></div></aside>
+        </div>
+        <section class="bottom-banner"><div class="banner-symbol">✳</div><div><strong>Your voice library is waiting.</strong><p>Add a voice sample you own or have permission to use to start building your private collection.</p></div><button class="secondary-button" data-page="voices">Explore my voices <span>→</span></button></section>
+      </section>
+      <section class="page hidden" id="page-voices">
+        <div class="page-heading"><div><div class="eyebrow">VOICE LIBRARY</div><h1>My <span>voices.</span></h1><p class="subheading">Keep your voice profiles organised in one private space.</p></div><button class="primary-button" id="add-voice-button">＋ Add a voice</button></div>
+        <div class="panel upload-panel"><div class="upload-art"><div class="upload-wave">∿</div></div><div class="upload-copy"><div class="eyebrow">BUILD YOUR LIBRARY</div><h2>Bring a voice to life.</h2><p>Upload an MP3 or WAV sample to create a reusable voice profile. Only upload a voice you own or have explicit permission to use.</p><div class="upload-specs"><span>MP3 / WAV</span><span>Private by design</span><span>Consent required</span></div><button class="secondary-button" id="upload-info-button">How it works <span>→</span></button></div></div>
+        <div class="section-title-row"><div><h2>Saved voices</h2><p>Your private voice collection</p></div><span class="soft-tag">0 VOICES</span></div>
+        <div class="empty-library"><div class="empty-icon">◉</div><strong>No voices added yet</strong><p>Your saved voice profiles will show up here.</p><button class="text-button" id="empty-add-button">Add your first voice <span>→</span></button></div>
+      </section>
+      <section class="page hidden" id="page-keys">
+        <div class="page-heading"><div><div class="eyebrow">DEVELOPER ACCESS</div><h1>API <span>keys.</span></h1><p class="subheading">Connect SONIVOX to the apps and workflows you build.</p></div><button class="primary-button" id="create-key-button" disabled>＋ Create API key</button></div>
+        <div class="notice-card"><div class="notice-icon">⌘</div><div><strong>Your developer access is being prepared.</strong><p>Personal API keys will let your applications securely request speech from your own voice profiles. Key creation will be enabled after account authentication is connected.</p></div></div>
+        <div class="section-title-row"><div><h2>Your keys</h2><p>Manage access to your SONIVOX account</p></div><span class="soft-tag">0 ACTIVE</span></div>
+        <div class="empty-library keys-empty"><div class="empty-icon">⌘</div><strong>No API keys yet</strong><p>Create a personal key to connect your first application.</p></div>
+        <div class="security-note"><span>◇</span><div><strong>Built with security in mind</strong><p>New keys will be shown once, stored as secure hashes, and revocable at any time.</p></div></div>
+      </section>
+      <footer class="footer"><span>© 2026 SONIVOX</span><span>VOICE WITHOUT BOUNDARIES</span><span>Built for creators & developers</span></footer>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>
