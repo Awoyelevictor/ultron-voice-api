@@ -86,7 +86,7 @@ async function enterWorkspace() {
   };
   document.getElementById("generate-button").disabled = false;
   document.getElementById("add-voice-button").disabled = false;
-  document.getElementById("create-key-button").disabled = false;
+  document.getElementById("create-key-button").disabled = true;
   await loadVoices();
   await loadStats();
 }
