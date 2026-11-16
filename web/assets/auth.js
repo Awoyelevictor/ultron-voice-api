@@ -2,6 +2,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 const form = document.getElementById("auth-form");
 const button = document.getElementById("auth-submit");
+const googleButton = document.getElementById("google-auth");
 const message = document.getElementById("auth-message");
 const mode = location.pathname === "/signup" ? "signup" : "signin";
 
@@ -23,6 +24,19 @@ async function start() {
     if (sessionError) throw sessionError;
     if (session) { location.replace("/"); return; }
 
+    googleButton.addEventListener("click", async () => {
+      googleButton.disabled = true;
+      showMessage("Connecting to Google…", "success");
+      try {
+        const {error} = await supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin + "/"}});
+        if (error) throw error;
+      } catch (error) {
+        console.error("SONIVOX Google authentication error:", error);
+        showMessage(error?.message || "Google sign-in could not start. Check that Google is enabled in Supabase.");
+        googleButton.disabled = false;
+      }
+    });
+
     form.addEventListener("submit", async event => {
       event.preventDefault();
       const email = document.getElementById("auth-email").value.trim();
@@ -42,8 +56,7 @@ async function start() {
           : await supabase.auth.signInWithPassword({email,password});
         if (result.error) throw result.error;
         if (mode === "signup" && !result.data.session) {
-          showMessage("Your account request was accepted. Check your inbox (and spam folder) for the confirmation email, then sign in here.", "success");
-          form.reset();
+          showMessage("Supabase is still requiring email confirmation. Disable Confirm email in Supabase Authentication > Sign In / Providers > Email, then try again.");
           return;
         }
         if (!result.data.session) throw new Error("Authentication succeeded but no session was returned. Try signing in again.");
