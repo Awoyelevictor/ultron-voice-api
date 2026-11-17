@@ -206,30 +206,39 @@ fileInput.addEventListener("change", async () => {
   const name = prompt("Give this voice profile a name:");
   if (!name?.trim()) return;
   if (!confirm("Confirm that this is your voice or you have explicit permission from the speaker to use and generate speech with it.")) return;
+  if (!currentSession?.user?.id) return notify("Your session expired. Please sign in again.");
   const userId = currentSession.user.id;
-  let wavFile;
+  let uploadedPath = null;
   try {
     notify("Preparing and converting your audio…");
-    wavFile = await convertAudioToWav(file);
+    const wavFile = await convertAudioToWav(file);
+    uploadedPath = userId + "/" + crypto.randomUUID() + ".wav";
+    notify("Uploading your private voice sample…");
+    const {error:uploadError} = await supabase.storage.from("sonivox-voices")
+      .upload(uploadedPath,wavFile,{contentType:"audio/wav",upsert:false});
+    if (uploadError) throw new Error("Upload failed: " + uploadError.message);
+    const {error:insertError} = await supabase.from("sonivox_voices").insert({
+      user_id:userId,name:name.trim().slice(0,80),sample_path:uploadedPath,consent_confirmed:true
+    });
+    if (insertError) {
+      await supabase.storage.from("sonivox-voices").remove([uploadedPath]);
+      uploadedPath = null;
+      throw new Error("The audio uploaded, but the voice profile could not be saved: " + insertError.message);
+    }
+    uploadedPath = null;
+    notify("Audio converted and voice profile saved.");
+    await loadVoices();
+    await loadStats();
+    showPage("voices");
   } catch (error) {
-    return notify(error.message || "This audio format could not be decoded by your browser. Try converting it to MP3 or WAV.");
+    const message = error?.message || String(error) || "Unknown upload error.";
+    console.error("SONIVOX voice upload failed:", error);
+    notify(message.startsWith("Upload failed:") || message.startsWith("The audio uploaded,") || message.startsWith("This browser") || message.startsWith("Audio must")
+      ? message
+      : "Could not add this voice: " + message);
   }
-  const path = userId + "/" + crypto.randomUUID() + ".wav";
-  notify("Uploading your private voice sample…");
-  const {error:uploadError} = await supabase.storage.from("sonivox-voices").upload(path,wavFile,{contentType:"audio/wav",upsert:false});
-  if (uploadError) return notify("Upload failed: " + uploadError.message);
-  const {error:insertError} = await supabase.from("sonivox_voices").insert({
-    user_id:userId,name:name.trim().slice(0,80),sample_path:path,consent_confirmed:true
-  });
-  if (insertError) {
-    await supabase.storage.from("sonivox-voices").remove([path]);
-    return notify("Could not save voice profile: " + insertError.message);
-  }
-  notify("Audio converted and voice profile saved.");
-  await loadVoices();
-  await loadStats();
-  showPage("voices");
 });
+
 async function deleteVoice(voice) {
   if (!confirm("Delete “" + voice.name + "” and its uploaded sample?")) return;
   const {error} = await supabase.from("sonivox_voices").delete().eq("id",voice.id);
