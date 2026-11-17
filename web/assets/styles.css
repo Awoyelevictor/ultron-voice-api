@@ -131,3 +131,8 @@
 .auth-page .about-public .about-main h2{font-size:clamp(22px,4vw,30px)}
 .auth-page .about-public .about-note>p{font-size:13px}
 @media(max-width:720px){.about-grid,.auth-page .about-public .about-grid{grid-template-columns:1fr}.about-sonivox{padding:21px}.about-note{padding:17px}.about-main h2{font-size:27px}}
+
+.about-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.about-links a{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #314968;border-radius:7px;background:#12223a;color:#a9c7ff;text-decoration:none;font-size:9px;font-weight:700;transition:background .18s,border-color .18s}
+.about-links a:hover{background:#1a3150;border-color:#648bd0}
+.about-links a span{color:#7ce0e8}
