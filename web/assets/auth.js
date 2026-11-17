@@ -19,7 +19,7 @@ async function start() {
     if (!config.configured || !config.supabase_url || !config.publishable_key) {
       throw new Error("Account service is not configured. Please contact the SONIVOX administrator.");
     }
-    const supabase = createClient(config.supabase_url, config.publishable_key);
+    const supabase = createClient(config.supabase_url, config.publishable_key, { auth: { flowType: "pkce", detectSessionInUrl: true, persistSession: true, autoRefreshToken: true } });
     const {data:{session}, error:sessionError} = await supabase.auth.getSession();
     if (sessionError) throw sessionError;
     if (session) { location.replace("/"); return; }
@@ -28,7 +28,7 @@ async function start() {
       googleButton.disabled = true;
       showMessage("Connecting to Google…", "success");
       try {
-        const {error} = await supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin + "/"}});
+        const {error} = await supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin + "/auth/callback"}});
         if (error) throw error;
       } catch (error) {
         console.error("SONIVOX Google authentication error:", error);
