@@ -37,6 +37,25 @@ async function start() {
       }
     });
 
+    const forgotLink = document.getElementById("forgot-password");
+    forgotLink?.addEventListener("click", async event => {
+      event.preventDefault();
+      const email = document.getElementById("auth-email").value.trim();
+      if (!email) return showMessage("Enter your email address first, then tap Forgot password.");
+      forgotLink.textContent = "Sending reset link…";
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: location.origin + "/reset-password"
+        });
+        if (error) throw error;
+        showMessage("If an account exists for that email, a password reset link has been sent. Check your inbox and spam folder.", "success");
+      } catch (error) {
+        showMessage(error?.message || "Could not send a reset link. Please try again.");
+      } finally {
+        forgotLink.textContent = "Forgot password?";
+      }
+    });
+
     form.addEventListener("submit", async event => {
       event.preventDefault();
       const email = document.getElementById("auth-email").value.trim();
