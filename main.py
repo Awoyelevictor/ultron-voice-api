@@ -529,16 +529,16 @@ async def admin_overview(authorization: str = Header(default="")):
         await require_sonivox_admin(client, authorization)
         headers = {**admin_headers(), "Prefer": "count=exact", "Range": "0-0", "Accept": "application/json"}
         tables = {
-            "users": "sonivox_profiles",
-            "voices": "sonivox_voices",
-            "generations": "sonivox_generations",
-            "api_keys": "sonivox_api_keys",
+            "users": ("sonivox_profiles", "user_id"),
+            "voices": ("sonivox_voices", "id"),
+            "generations": ("sonivox_generations", "id"),
+            "api_keys": ("sonivox_api_keys", "id"),
         }
         counts = {}
-        for label, table in tables.items():
+        for label, (table, count_column) in tables.items():
             response = await client.get(
                 f"{SUPABASE_URL}/rest/v1/{table}",
-                params={"select": "id", "limit": "1"},
+                params={"select": count_column, "limit": "1"},
                 headers=headers,
             )
             if response.status_code not in (200, 206):
