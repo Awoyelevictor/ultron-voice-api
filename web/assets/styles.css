@@ -42,3 +42,5 @@
 .google-button:hover{border-color:#759fff;background:#17263c}
 .google-button:disabled{opacity:.65;cursor:wait}
 .google-g{font:700 19px Arial,sans-serif;background:conic-gradient(from -45deg,#4285f4 0 25%,#34a853 0 50%,#fbbc05 0 75%,#ea4335 0);background-clip:text;-webkit-background-clip:text;color:transparent}
+
+.auth-forgot{display:block;text-align:right;margin:0 0 8px;color:#91b5ff;text-decoration:none;font-size:11px;font-weight:600}.auth-forgot:hover{text-decoration:underline}
