@@ -497,4 +497,60 @@ async def speak(data: LegacySpeechRequest, x_api_key: str = Header(default="")):
     raise HTTPException(status_code=502, detail="TTS provider failed after retry")
 
 
+SONIVOX_ADMIN_USER_ID = os.getenv("SONIVOX_ADMIN_USER_ID", "").strip()
+SONIVOX_ADMIN_EMAIL = "awoyeleemma1@gmail.com"
+
+
+async def require_sonivox_admin(client: httpx.AsyncClient, authorization: str) -> dict:
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    token = authorization.split(" ", 1)[1].strip()
+    user = await get_authenticated_user(client, token)
+    if not SONIVOX_ADMIN_USER_ID:
+        logger.error("SONIVOX_ADMIN_USER_ID is not configured")
+        raise HTTPException(status_code=503, detail="Admin access is not configured")
+    if user.get("id") != SONIVOX_ADMIN_USER_ID:
+        raise HTTPException(status_code=403, detail="This account is not authorized for SONIVOX administration")
+    if (user.get("email") or "").lower() != SONIVOX_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admin account verification failed")
+    if not user.get("email_confirmed_at"):
+        raise HTTPException(status_code=403, detail="Admin email must be confirmed")
+    return user
+
+
+@app.get("/admin")
+async def admin_dashboard_page():
+    return FileResponse("web/admin.html")
+
+
+@app.get("/api/admin/overview")
+async def admin_overview(authorization: str = Header(default="")):
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        await require_sonivox_admin(client, authorization)
+        headers = {**admin_headers(), "Prefer": "count=exact", "Range": "0-0", "Accept": "application/json"}
+        tables = {
+            "users": "sonivox_profiles",
+            "voices": "sonivox_voices",
+            "generations": "sonivox_generations",
+            "api_keys": "sonivox_api_keys",
+        }
+        counts = {}
+        for label, table in tables.items():
+            response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/{table}",
+                params={"select": "id", "limit": "1"},
+                headers=headers,
+            )
+            if response.status_code not in (200, 206):
+                logger.error("Admin overview count failed for %s: HTTP %s", table, response.status_code)
+                raise HTTPException(status_code=502, detail="Could not load platform statistics")
+            content_range = response.headers.get("content-range", "")
+            try:
+                counts[label] = int(content_range.rsplit("/", 1)[1])
+            except (ValueError, IndexError):
+                raise HTTPException(status_code=502, detail="Statistics count was unavailable")
+        return {"counts": counts, "free_monthly_character_limit": 20000,
+                "billing_enabled": False, "admin_email": SONIVOX_ADMIN_EMAIL}
+
+
 app.mount("/assets", StaticFiles(directory="web/assets"), name="assets")
