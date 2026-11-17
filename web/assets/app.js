@@ -305,7 +305,7 @@ async function sha256Hex(value) {
 async function loadApiKeys() {
   const container = document.getElementById("api-key-list");
   const {data,error} = await supabase.from("sonivox_api_keys")
-    .select("id,name,key_prefix,created_at,last_used_at,revoked_at")
+    .select("id,name,key_prefix,created_at,last_used_at,revoked_at,preset_id,preset:sonivox_voice_presets(name,allow_overrides)")
     .order("created_at",{ascending:false});
   if (error) return notify("Could not load API keys: " + error.message);
   container.innerHTML = "";
@@ -325,7 +325,8 @@ async function loadApiKeys() {
     prefix.textContent = key.key_prefix + "••••••••";
     const meta = document.createElement("small");
     meta.textContent = "Created " + new Date(key.created_at).toLocaleDateString() +
-      (key.last_used_at ? " · Last used " + new Date(key.last_used_at).toLocaleString() : " · Never used");
+      (key.last_used_at ? " · Last used " + new Date(key.last_used_at).toLocaleString() : " · Never used") +
+      (key.preset?.name ? " · Preset: " + key.preset.name + (key.preset.allow_overrides ? " · Overrides on" : " · Locked") : " · Legacy voice selection");
     copy.append(name,prefix,meta);
     const status = document.createElement("span");
     status.className = key.revoked_at ? "key-status revoked" : "key-status active";
@@ -349,29 +350,49 @@ async function loadApiKeys() {
   });
 }
 async function createApiKey() {
-  const name = prompt("Give this API key a name (for example, My Node.js app):");
-  if (!name?.trim()) return;
+  if (!voices.length) return notify("Add a voice profile before creating a preset-bound API key.");
+  const choices = voices.map((voice,index) => (index + 1) + ". " + voice.name).join("\n");
+  const selected = Number(prompt("Choose the voice for this API preset:\n" + choices));
+  if (!Number.isInteger(selected) || selected < 1 || selected > voices.length) return;
+  const voice = voices[selected - 1];
+  const presetName = prompt("Name this voice preset (for example, Warm Narrator):");
+  if (!presetName?.trim()) return;
+  const allowOverrides = confirm("Allow developers using this key to override the selected voice in individual requests?\n\nOK = Allow voice overrides\nCancel = Lock this key to the preset");
+  const keyName = prompt("Name this API key (for example, My Node.js app):");
+  if (!keyName?.trim()) return;
   const button = document.getElementById("create-key-button");
   button.disabled = true;
   try {
+    const {data:preset,error:presetError} = await supabase.from("sonivox_voice_presets").insert({
+      user_id:currentSession.user.id,
+      voice_id:voice.id,
+      name:presetName.trim().slice(0,80),
+      settings:{},
+      allow_overrides:allowOverrides
+    }).select("id").single();
+    if (presetError) throw presetError;
     const random = crypto.getRandomValues(new Uint8Array(32));
     const secret = "svx_live_" + Array.from(random, byte => byte.toString(16).padStart(2,"0")).join("");
     const hash = await sha256Hex(secret);
     const prefix = secret.slice(0,16);
     const {error} = await supabase.from("sonivox_api_keys").insert({
       user_id:currentSession.user.id,
-      name:name.trim().slice(0,80),
+      name:keyName.trim().slice(0,80),
       key_prefix:prefix,
-      key_hash:hash
+      key_hash:hash,
+      preset_id:preset.id
     });
-    if (error) throw error;
+    if (error) {
+      await supabase.from("sonivox_voice_presets").delete().eq("id",preset.id);
+      throw error;
+    }
     document.getElementById("created-api-key").textContent = secret;
     document.getElementById("key-created").classList.remove("hidden");
     document.getElementById("copy-created-key").onclick = async () => {
       await navigator.clipboard.writeText(secret);
       notify("API key copied.");
     };
-    notify("API key created. Copy it now; it will not be shown again.");
+    notify("Preset-bound API key created. Copy it now; it will not be shown again.");
     await loadApiKeys();
     document.getElementById("key-created").scrollIntoView({behavior:"smooth",block:"center"});
   } catch (error) {
