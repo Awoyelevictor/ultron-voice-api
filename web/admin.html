@@ -20,6 +20,15 @@
 <article class="stat"><div class="stat-head">GENERATIONS <b>↗</b></div><strong id="generations">—</strong><small>Speech generation records</small></article>
 <article class="stat"><div class="stat-head">API KEYS <b>⌘</b></div><strong id="keys">—</strong><small>Key records; secrets never displayed</small></article>
 </div>
+
+<article class="panel key-inventory">
+  <div class="eyebrow">PLATFORM CONTROL / API ACCESS</div>
+  <h2>API key inventory</h2>
+  <p>Key ownership and status across SONIVOX. Secret values are never exposed here.</p>
+  <div id="admin-key-state" class="muted">Loading API keys…</div>
+  <div class="key-table-wrap"><table class="key-table"><thead><tr><th>KEY</th><th>OWNER ID</th><th>CREATED</th><th>LAST USED</th><th>STATUS</th></tr></thead><tbody id="admin-key-rows"></tbody></table></div>
+</article>
+
 <div class="lower">
 <article class="panel"><div class="eyebrow">SERVICE POLICY</div><h2>Free access is active.</h2><p>Current monthly allowance</p><div class="quota"><strong id="limit">20,000</strong><span>characters / account</span></div><div class="line"></div><div class="meta"><span>Billing</span><b class="free">Disabled</b></div><div class="meta"><span>Administrator identity</span><b>Verified allowlist</b></div></article>
 <article class="panel"><div class="eyebrow">SECURITY POSTURE</div><h2>Access controls</h2><ul class="checks"><li><i>✓</i> Server-side administrator UUID check</li><li><i>✓</i> Confirmed email cross-check</li><li><i>✓</i> Statistics fetched server-side</li><li><i>✓</i> API key hashes and secrets withheld</li><li><i>✓</i> Dashboard requires a valid signed-in session</li></ul></article>
