@@ -528,13 +528,24 @@ async def admin_overview(authorization: str = Header(default="")):
     async with httpx.AsyncClient(timeout=20.0) as client:
         await require_sonivox_admin(client, authorization)
         headers = {**admin_headers(), "Prefer": "count=exact", "Range": "0-0", "Accept": "application/json"}
+        user_count_response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/sonivox_admin_registered_user_count",
+            headers=admin_headers(),
+            json={},
+        )
+        if user_count_response.status_code != 200:
+            logger.error("Admin registered-user count failed: HTTP %s", user_count_response.status_code)
+            raise HTTPException(status_code=502, detail="Could not load registered account count")
+        try:
+            registered_users = int(user_count_response.json())
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=502, detail="Registered account count was unavailable")
         tables = {
-            "users": ("sonivox_profiles", "user_id"),
             "voices": ("sonivox_voices", "id"),
             "generations": ("sonivox_generations", "id"),
             "api_keys": ("sonivox_api_keys", "id"),
         }
-        counts = {}
+        counts = {"users": registered_users}
         for label, (table, count_column) in tables.items():
             response = await client.get(
                 f"{SUPABASE_URL}/rest/v1/{table}",
