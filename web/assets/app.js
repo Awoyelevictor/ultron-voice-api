@@ -130,12 +130,12 @@ fileInput.hidden = true;
 document.body.appendChild(fileInput);
 
 const AUDIO_EXTENSIONS = new Set([
-  "wav","mp3","m4a","mp4","aac","ogg","oga","opus","flac","aiff","aif","wma","webm","3gp","amr"
+  "wav","mp3","m4a","aac","ogg","oga","opus","flac","aiff","aif","wma","amr"
 ]);
 function isAudioFile(file) {
   const extension = file.name.split(".").pop()?.toLowerCase() || "";
   return !file.type.startsWith("video/") &&
-    (file.type.startsWith("audio/") || AUDIO_EXTENSIONS.has(extension));
+    (file.type.startsWith("audio/") || (!["webm","3gp","mp4"].includes(extension) && AUDIO_EXTENSIONS.has(extension)));
 }
 function encodeWav16(audioBuffer) {
   const channels = audioBuffer.numberOfChannels;
