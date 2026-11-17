@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080b12"><title>SONIVOX — Admin Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/admin.css">
+</head>
+<body>
+<div class="glow glow-a"></div><div class="glow glow-b"></div>
+<main class="shell">
+<header class="top"><a class="brand" href="/"><span class="mark">S</span>SONI<span>VOX</span></a><div class="top-right"><span class="secure"><i></i> RESTRICTED CONSOLE</span><button id="signout" class="quiet">Sign out</button></div></header>
+<section class="intro"><div><div class="eyebrow">PLATFORM CONTROL / 01</div><h1>Admin <em>overview.</em></h1><p>Private operational snapshot. Access is restricted to the explicitly authorized administrator account.</p></div><button id="refresh" class="refresh">↻ Refresh data</button></section>
+<div id="state" class="state" role="status">Verifying administrator access…</div>
+<section id="dashboard" class="hidden">
+<div class="stats">
+<article class="stat"><div class="stat-head">REGISTERED ACCOUNTS <b>◉</b></div><strong id="users">—</strong><small>Profiles created in SONIVOX</small></article>
+<article class="stat"><div class="stat-head">VOICE PROFILES <b>∿</b></div><strong id="voices">—</strong><small>Saved voice profiles</small></article>
+<article class="stat"><div class="stat-head">GENERATIONS <b>↗</b></div><strong id="generations">—</strong><small>Speech generation records</small></article>
+<article class="stat"><div class="stat-head">API KEYS <b>⌘</b></div><strong id="keys">—</strong><small>Key records; secrets never displayed</small></article>
+</div>
+<div class="lower">
+<article class="panel"><div class="eyebrow">SERVICE POLICY</div><h2>Free access is active.</h2><p>Current monthly allowance</p><div class="quota"><strong id="limit">20,000</strong><span>characters / account</span></div><div class="line"></div><div class="meta"><span>Billing</span><b class="free">Disabled</b></div><div class="meta"><span>Administrator identity</span><b>Verified allowlist</b></div></article>
+<article class="panel"><div class="eyebrow">SECURITY POSTURE</div><h2>Access controls</h2><ul class="checks"><li><i>✓</i> Server-side administrator UUID check</li><li><i>✓</i> Confirmed email cross-check</li><li><i>✓</i> Statistics fetched server-side</li><li><i>✓</i> API key hashes and secrets withheld</li><li><i>✓</i> Dashboard requires a valid signed-in session</li></ul></article>
+</div>
+<p class="footnote">SONIVOX ADMIN · Sensitive user content and voice recordings are not exposed in this overview.</p>
+</section>
+</main>
+<script type="module" src="/assets/admin.js"></script>
+</body></html>
