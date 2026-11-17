@@ -114,6 +114,28 @@ async def readiness():
     }
 
 
+@app.get("/api/usage")
+async def get_usage(authorization: str = Header(default="")):
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Sign in to view usage")
+    token = authorization.split(" ", 1)[1].strip()
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        user = await get_authenticated_user(client, token)
+        period_start = time.strftime("%Y-%m-01", time.gmtime())
+        response = await client.get(
+            f"{SUPABASE_URL}/rest/v1/sonivox_usage_periods",
+            params={"user_id": f"eq.{user['id']}", "period_start": f"eq.{period_start}",
+                    "select": "characters_used", "limit": "1"},
+            headers={**supabase_headers(token), "Accept": "application/json"},
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail="Could not load usage balance")
+        rows = response.json()
+        used = int(rows[0]["characters_used"]) if rows else 0
+        return {"plan": "Free", "monthly_limit": 20000, "used": used,
+                "remaining": max(0, 20000 - used), "billing_enabled": False}
+
+
 @app.post("/api/speech")
 async def generate_speech(data: SpeechRequest, authorization: str = Header(default="")):
     if not authorization.lower().startswith("bearer "):
@@ -129,7 +151,6 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         user = await get_authenticated_user(client, token)
         user_id = user["id"]
-
         voice_response = await client.get(
             f"{SUPABASE_URL}/rest/v1/sonivox_voices",
             params={"id": f"eq.{data.voice_id}", "user_id": f"eq.{user_id}",
@@ -144,7 +165,6 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
         sample_path = voices[0]["sample_path"]
         if not sample_path.startswith(f"{user_id}/") or ".." in sample_path.split("/"):
             raise HTTPException(status_code=403, detail="Invalid voice sample path")
-
         sample_response = await client.get(
             f"{SUPABASE_URL}/storage/v1/object/authenticated/{VOICE_BUCKET}/{quote(sample_path, safe='/')}",
             headers=supabase_headers(token),
@@ -153,80 +173,94 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
             raise HTTPException(status_code=404, detail="Your voice sample could not be loaded")
         voice_b64 = base64.b64encode(sample_response.content).decode("ascii")
 
-        started = time.monotonic()
+        reservation_id = str(uuid.uuid4())
+        reserve_response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/reserve_sonivox_characters",
+            headers={**supabase_headers(token), "Content-Type": "application/json"},
+            json={"p_request_id": reservation_id, "p_characters": len(text)},
+        )
+        if reserve_response.status_code != 200:
+            logger.error("Usage reservation failed: HTTP %s", reserve_response.status_code)
+            raise HTTPException(status_code=502, detail="Could not verify your free usage balance")
+        reservation = reserve_response.json()
+        if not reservation.get("allowed"):
+            raise HTTPException(status_code=402, detail="Monthly free allowance used. Your balance resets at the start of next month.")
+
         try:
-            tts_response = await client.post(
-                f"{TTS_API}/v1/tts",
-                json={
-                    "text": text,
-                    "lang": data.lang,
-                    "format": "wav",
-                    "voice_wav_base64": voice_b64,
-                },
+            started = time.monotonic()
+            try:
+                tts_response = await client.post(
+                    f"{TTS_API}/v1/tts",
+                    json={"text": text, "lang": data.lang, "format": "wav",
+                          "voice_wav_base64": voice_b64},
+                )
+                if tts_response.status_code == 429:
+                    raise HTTPException(status_code=503, detail="Voice provider is busy. Try again shortly.")
+                tts_response.raise_for_status()
+            except HTTPException:
+                raise
+            except httpx.TimeoutException as exc:
+                raise HTTPException(status_code=504, detail="Speech generation timed out") from exc
+            except httpx.HTTPStatusError as exc:
+                logger.warning("TTS provider returned HTTP %s", exc.response.status_code)
+                raise HTTPException(status_code=502, detail="Voice provider could not generate this audio") from exc
+            except httpx.RequestError as exc:
+                logger.warning("TTS provider connection failed: %s", type(exc).__name__)
+                raise HTTPException(status_code=502, detail="Could not reach the voice provider") from exc
+
+            audio = tts_response.content
+            if not audio.startswith(b"RIFF"):
+                raise HTTPException(status_code=502, detail="Voice provider returned invalid WAV audio")
+            duration_ms = None
+            try:
+                with wave.open(io.BytesIO(audio), "rb") as wav:
+                    duration_ms = int(wav.getnframes() / wav.getframerate() * 1000)
+            except (wave.Error, ZeroDivisionError):
+                pass
+
+            generation_id = str(uuid.uuid4())
+            audio_path = f"{user_id}/generations/{generation_id}.wav"
+            upload_response = await client.post(
+                f"{SUPABASE_URL}/storage/v1/object/{VOICE_BUCKET}/{quote(audio_path, safe='/')}",
+                headers={**supabase_headers(token), "Content-Type": "audio/wav", "x-upsert": "false"},
+                content=audio,
             )
-            if tts_response.status_code == 429:
-                raise HTTPException(status_code=503, detail="Voice provider is busy. Try again shortly.")
-            tts_response.raise_for_status()
-        except HTTPException:
+            if upload_response.status_code not in (200, 201):
+                logger.error("Could not store generated audio: HTTP %s", upload_response.status_code)
+                raise HTTPException(status_code=502, detail="Audio was generated but could not be saved")
+
+            generation_response = await client.post(
+                f"{SUPABASE_URL}/rest/v1/sonivox_generations",
+                headers={**supabase_headers(token), "Content-Type": "application/json",
+                         "Prefer": "return=representation"},
+                json={"id": generation_id, "user_id": user_id, "voice_id": data.voice_id,
+                      "input_text": text, "status": "completed", "audio_path": audio_path,
+                      "duration_ms": duration_ms},
+            )
+            if generation_response.status_code not in (200, 201):
+                logger.error("Could not save generation record: HTTP %s", generation_response.status_code)
+                raise HTTPException(status_code=502, detail="Audio was generated but history could not be saved")
+
+            finish_response = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/finish_sonivox_reservation",
+                headers={**supabase_headers(token), "Content-Type": "application/json"},
+                json={"p_request_id": reservation_id, "p_success": True},
+            )
+            if finish_response.status_code != 200:
+                logger.error("Could not finalize usage reservation: HTTP %s", finish_response.status_code)
+                raise HTTPException(status_code=502, detail="Audio was created but usage could not be finalized")
+            logger.info("SONIVOX generated audio in %.2fs for user %s", time.monotonic() - started, user_id)
+            return {"id": generation_id, "audio_path": audio_path, "duration_ms": duration_ms}
+        except Exception:
+            try:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/finish_sonivox_reservation",
+                    headers={**supabase_headers(token), "Content-Type": "application/json"},
+                    json={"p_request_id": reservation_id, "p_success": False},
+                )
+            except Exception:
+                logger.exception("Could not release failed usage reservation")
             raise
-        except httpx.TimeoutException as exc:
-            raise HTTPException(status_code=504, detail="Speech generation timed out") from exc
-        except httpx.HTTPStatusError as exc:
-            logger.warning("TTS provider returned HTTP %s", exc.response.status_code)
-            raise HTTPException(status_code=502, detail="Voice provider could not generate this audio") from exc
-        except httpx.RequestError as exc:
-            logger.warning("TTS provider connection failed: %s", type(exc).__name__)
-            raise HTTPException(status_code=502, detail="Could not reach the voice provider") from exc
-
-        audio = tts_response.content
-        if not audio.startswith(b"RIFF"):
-            raise HTTPException(status_code=502, detail="Voice provider returned invalid WAV audio")
-
-        duration_ms = None
-        try:
-            with wave.open(io.BytesIO(audio), "rb") as wav:
-                duration_ms = int(wav.getnframes() / wav.getframerate() * 1000)
-        except (wave.Error, ZeroDivisionError):
-            pass
-
-        generation_id = str(uuid.uuid4())
-        audio_path = f"{user_id}/generations/{generation_id}.wav"
-        upload_response = await client.post(
-            f"{SUPABASE_URL}/storage/v1/object/{VOICE_BUCKET}/{quote(audio_path, safe='/')}",
-            headers={
-                **supabase_headers(token),
-                "Content-Type": "audio/wav",
-                "x-upsert": "false",
-            },
-            content=audio,
-        )
-        if upload_response.status_code not in (200, 201):
-            logger.error("Could not store generated audio: HTTP %s", upload_response.status_code)
-            raise HTTPException(status_code=502, detail="Audio was generated but could not be saved")
-
-        generation_response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/sonivox_generations",
-            headers={
-                **supabase_headers(token),
-                "Content-Type": "application/json",
-                "Prefer": "return=representation",
-            },
-            json={
-                "id": generation_id,
-                "user_id": user_id,
-                "voice_id": data.voice_id,
-                "input_text": text,
-                "status": "completed",
-                "audio_path": audio_path,
-                "duration_ms": duration_ms,
-            },
-        )
-        if generation_response.status_code not in (200, 201):
-            logger.error("Could not save generation record: HTTP %s", generation_response.status_code)
-            raise HTTPException(status_code=502, detail="Audio was generated but history could not be saved")
-
-        logger.info("SONIVOX generated audio in %.2fs for user %s", time.monotonic() - started, user_id)
-        return {"id": generation_id, "audio_path": audio_path, "duration_ms": duration_ms}
 
 
 # Legacy ULTRON endpoint retained for existing integrations.
