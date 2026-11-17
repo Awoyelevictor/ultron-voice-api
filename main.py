@@ -112,6 +112,7 @@ async def readiness():
     return {
         "status": "ready" if SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY else "degraded",
         "supabase_configured": bool(SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY),
+        "developer_api_configured": bool(SUPABASE_SECRET_KEY),
         "legacy_voice_reference_configured": os.path.isfile(voice_path),
     }
 
@@ -141,7 +142,7 @@ async def get_usage(authorization: str = Header(default="")):
 def admin_headers() -> dict:
     if not SUPABASE_SECRET_KEY:
         raise HTTPException(status_code=503, detail="Developer API is not configured yet")
-    return {"apikey": SUPABASE_SECRET_KEY, "Authorization": f"Bearer {SUPABASE_SECRET_KEY}"}
+    return {"apikey": SUPABASE_SECRET_KEY}
 
 
 async def get_api_key_owner(client: httpx.AsyncClient, raw_key: str) -> tuple[dict, dict]:
