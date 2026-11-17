@@ -324,6 +324,8 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
 async def generate_speech(data: SpeechRequest, authorization: str = Header(default="")):
     if not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Sign in to generate speech")
+    if not data.voice_id:
+        raise HTTPException(status_code=400, detail="Select a voice profile first")
     token = authorization.split(" ", 1)[1].strip()
     text = data.text.strip()
     if not text:
