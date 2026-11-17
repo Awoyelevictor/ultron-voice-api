@@ -360,22 +360,37 @@ async function loadApiKeys() {
     status.className = key.revoked_at ? "key-status revoked" : "key-status active";
     status.textContent = key.revoked_at ? "REVOKED" : "ACTIVE";
     card.append(copy,status);
-    if (!key.revoked_at) {
-      const revoke = document.createElement("button");
-      revoke.className = "text-button";
-      revoke.textContent = "Revoke";
-      revoke.onclick = async () => {
-        if (!confirm("Revoke this API key? Applications using it will stop working immediately.")) return;
-        const {error:updateError} = await supabase.from("sonivox_api_keys")
-          .update({revoked_at:new Date().toISOString()})
-          .eq("id",key.id)
-          .eq("user_id",currentSession.user.id);
-        if (updateError) return notify("Could not revoke key: " + updateError.message);
-        notify("API key revoked.");
-        await loadApiKeys();
-      };
-      card.append(revoke);
-    }
+    const actions = document.createElement("div");
+    actions.className = "api-key-actions";
+    const toggle = document.createElement("button");
+    toggle.className = "text-button";
+    toggle.textContent = key.revoked_at ? "Unrevoke" : "Revoke";
+    toggle.onclick = async () => {
+      const action = key.revoked_at ? "unrevoke" : "revoke";
+      if (!confirm(action === "revoke"
+        ? "Revoke this API key? All applications using it will stop authenticating immediately."
+        : "Reactivate this API key? Applications holding the original secret will work again.")) return;
+      const {error:updateError} = await supabase.from("sonivox_api_keys")
+        .update({revoked_at:key.revoked_at ? null : new Date().toISOString()})
+        .eq("id",key.id)
+        .eq("user_id",currentSession.user.id);
+      if (updateError) return notify("Could not " + action + " key: " + updateError.message);
+      notify("API key " + (action === "revoke" ? "revoked." : "reactivated."));
+      await loadApiKeys();
+    };
+    const remove = document.createElement("button");
+    remove.className = "text-button danger";
+    remove.textContent = "Delete";
+    remove.onclick = async () => {
+      if (!confirm("Permanently delete this API key? This cannot be undone. Create a new key if you need it again.")) return;
+      const {error:deleteError} = await supabase.from("sonivox_api_keys").delete()
+        .eq("id",key.id).eq("user_id",currentSession.user.id);
+      if (deleteError) return notify("Could not delete key: " + deleteError.message);
+      notify("API key permanently deleted.");
+      await loadApiKeys();
+    };
+    actions.append(toggle,remove);
+    card.append(actions);
     container.append(card);
   });
 }
