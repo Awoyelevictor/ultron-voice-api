@@ -43,6 +43,7 @@ async function enterWorkspace() {
   document.getElementById("create-key-button").disabled = true;
   await loadVoices();
   await loadStats();
+  await loadUsage();
 }
 function lockWorkspace() {
   currentSession = null;
@@ -208,8 +209,10 @@ document.getElementById("generate-button").addEventListener("click", async () =>
     output.append(heading,player,download);
     notify("Speech generated successfully.");
     await loadStats();
+    await loadUsage();
   } catch (error) {
-    notify(error.message || "Speech generation failed.");\n    await loadUsage();
+    notify(error.message || "Speech generation failed.");
+    await loadUsage();
   } finally {
     button.disabled = false;
     button.innerHTML = '<span>✦</span> Generate speech <span class="button-arrow">→</span>';
