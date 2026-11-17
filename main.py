@@ -564,4 +564,20 @@ async def admin_overview(authorization: str = Header(default="")):
                 "billing_enabled": False, "admin_email": SONIVOX_ADMIN_EMAIL}
 
 
+@app.get("/api/admin/keys")
+async def admin_list_api_keys(authorization: str = Header(default="")):
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        await require_sonivox_admin(client, authorization)
+        response = await client.get(
+            f"{SUPABASE_URL}/rest/v1/sonivox_api_keys",
+            params={"select": "id,user_id,name,key_prefix,created_at,last_used_at,revoked_at",
+                    "order": "created_at.desc", "limit": "200"},
+            headers={**admin_headers(), "Accept": "application/json"},
+        )
+        if response.status_code != 200:
+            logger.error("Admin API-key listing failed: HTTP %s", response.status_code)
+            raise HTTPException(status_code=502, detail="Could not load API key inventory")
+        return {"keys": response.json()}
+
+
 app.mount("/assets", StaticFiles(directory="web/assets"), name="assets")
