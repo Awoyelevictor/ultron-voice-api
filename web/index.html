@@ -61,9 +61,18 @@
       </section>
       <section class="page hidden" id="page-keys">
         <div class="page-heading"><div><div class="eyebrow">DEVELOPER ACCESS</div><h1>API <span>keys.</span></h1><p class="subheading">Connect SONIVOX to the apps and workflows you build.</p></div><button class="primary-button" id="create-key-button" disabled>＋ Create API key</button></div>
-        <div class="notice-card"><div class="notice-icon">⌘</div><div><strong>Developer API is next.</strong><p>We're finishing secure account-based speech generation first. Personal API keys will follow with one-time display and hashed storage.</p></div></div>
-        <div class="section-title-row"><div><h2>Your keys</h2><p>Manage access to your SONIVOX account</p></div><span class="soft-tag">COMING NEXT</span></div>
-        <div class="empty-library keys-empty"><div class="empty-icon">⌘</div><strong>No API keys yet</strong><p>Personal API key management is the next milestone.</p></div>
+        <div class="notice-card"><div class="notice-icon">⌘</div><div><strong>Build with the SONIVOX API.</strong><p>Create a private key, call speech generation from your backend, and use voices saved in your SONIVOX account. Your monthly free allowance is shared with the dashboard.</p></div></div>
+        <div class="panel key-created hidden" id="key-created"><div class="eyebrow">COPY THIS KEY NOW</div><strong>Your new API key</strong><p>For security, SONIVOX will not show this key again. Store it in an environment variable.</p><div class="key-copy-row"><code id="created-api-key"></code><button class="secondary-button" id="copy-created-key">Copy key</button></div></div>
+        <div class="section-title-row"><div><h2>Your keys</h2><p>Manage access to your SONIVOX account</p></div><span class="soft-tag">PERSONAL KEYS</span></div>
+        <div class="panel keys-panel" id="api-key-list"><div class="empty-library keys-empty"><div class="empty-icon">⌘</div><strong>No API keys yet</strong><p>Create your first key to connect an application.</p></div></div>
+        <div class="panel api-docs"><div class="eyebrow">QUICK START</div><h2>Generate speech from your app</h2><p>Use your API key on your server. Never place it in browser JavaScript, mobile app source, or a public repository.</p><div class="api-endpoint"><span>POST</span> https://sonivox.onrender.com/v1/speech</div><p class="field-label">REQUEST BODY</p><pre><code>{
+  "text": "Hello from my application.",
+  "voice_id": "YOUR_VOICE_ID",
+  "lang": "eng"
+}</code></pre><p class="field-label">CURL EXAMPLE</p><pre><code>curl -X POST https://sonivox.onrender.com/v1/speech \
+  -H "Authorization: Bearer $SONIVOX_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Hello from SONIVOX","voice_id":"YOUR_VOICE_ID","lang":"eng"}'</code></pre><p class="microcopy">Supported language codes: eng, yor, hau, ibo, ful. Maximum 1,000 characters per request. The response includes a temporary audio_url (valid for one hour).</p></div>
       </section>
       <footer class="footer"><span>© 2026 SONIVOX</span><span>VOICE WITHOUT BOUNDARIES</span><span>Built for creators & developers</span></footer>
     </main>
