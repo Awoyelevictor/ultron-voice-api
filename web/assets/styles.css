@@ -105,3 +105,29 @@
 .docs-list li{padding-left:3px;margin:5px 0}
 .docs-list strong{color:#dce7f8}
 @media(max-width:720px){.docs-language-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.docs-endpoint{align-items:flex-start;flex-direction:column;gap:4px}.docs-table{min-width:490px}}
+
+/* SONIVOX story / creator section */
+.about-sonivox{position:relative;overflow:hidden;margin:28px 0 8px;padding:clamp(22px,4vw,38px);border:1px solid #263954;border-radius:16px;background:linear-gradient(125deg,#101b2b 0%,#0d1420 58%,#101d2a 100%)}
+.about-sonivox:after{content:"";position:absolute;width:260px;height:260px;right:-100px;top:-150px;border-radius:50%;background:#3471f4;filter:blur(100px);opacity:.12;pointer-events:none}
+.about-kicker{font-size:9px;letter-spacing:2px;font-weight:800;color:#7fa8ff;margin-bottom:24px}
+.about-grid{position:relative;z-index:1;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(220px,.8fr);gap:clamp(22px,4vw,52px);align-items:center}
+.about-symbol{width:39px;height:39px;display:grid;place-items:center;position:relative;border-radius:12px;background:linear-gradient(145deg,#79a6ff,#3471f4);color:#07101f;font:700 23px var(--display);box-shadow:0 0 28px #3c79ff40}
+.about-symbol span{position:absolute;right:-8px;top:-9px;color:#70d9ec;font-size:14px}
+.about-main h2{font:700 clamp(24px,3.3vw,37px)/1.12 var(--display);letter-spacing:-1px;margin:18px 0 14px}
+.about-main h2 span{color:#80a8ff}
+.about-main p{max-width:650px;color:#9cabc0;font-size:12px;line-height:1.85;margin:9px 0}
+.about-main p strong{color:#edf3ff}
+.about-note{padding:21px;border:1px solid #2a405e;border-radius:12px;background:#0a111d}
+.about-note>p{font:500 15px/1.65 var(--display);color:#d9e5f7;margin:12px 0 20px}
+.about-audience{display:flex;flex-wrap:wrap;gap:7px}
+.about-audience span{padding:6px 8px;border:1px solid #2a3c56;border-radius:20px;color:#8fa7ca;font-size:8px;font-weight:700;letter-spacing:.6px}
+.about-signature{border-top:1px solid #25354b;margin-top:20px;padding-top:14px;color:#dce7f8;font-size:11px;font-weight:700}
+.about-signature small{display:block;margin-top:4px;color:#7f91aa;font-size:9px;font-weight:500}
+.about-public{margin:28px 0 0}
+.auth-page{padding:34px 18px}
+.auth-page .auth-card{margin:0 auto}
+.auth-page .about-public{width:min(720px,100%);margin:22px auto 0;padding:24px}
+.auth-page .about-public .about-grid{grid-template-columns:minmax(0,1.2fr) minmax(190px,.8fr);gap:22px}
+.auth-page .about-public .about-main h2{font-size:clamp(22px,4vw,30px)}
+.auth-page .about-public .about-note>p{font-size:13px}
+@media(max-width:720px){.about-grid,.auth-page .about-public .about-grid{grid-template-columns:1fr}.about-sonivox{padding:21px}.about-note{padding:17px}.about-main h2{font-size:27px}}
