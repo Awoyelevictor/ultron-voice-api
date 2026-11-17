@@ -33,7 +33,7 @@ VOICE_BUCKET = "sonivox-voices"
 
 class SpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
-    voice_id: str
+    voice_id: str | None = None
     lang: str = "eng"
 
 
@@ -152,7 +152,7 @@ async def get_api_key_owner(client: httpx.AsyncClient, raw_key: str) -> tuple[di
     response = await client.get(
         f"{SUPABASE_URL}/rest/v1/sonivox_api_keys",
         params={"key_hash": f"eq.{digest}", "revoked_at": "is.null",
-                "select": "id,user_id,name", "limit": "1"},
+                "select": "id,user_id,name,preset_id", "limit": "1"},
         headers={**admin_headers(), "Accept": "application/json"},
     )
     if response.status_code != 200:
@@ -203,9 +203,28 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         key_row, headers = await get_api_key_owner(client, raw_key)
         user_id = key_row["user_id"]
+        preset = None
+        voice_id = data.voice_id
+        if key_row.get("preset_id"):
+            preset_response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/sonivox_voice_presets",
+                params={"id": f"eq.{key_row['preset_id']}", "user_id": f"eq.{user_id}",
+                        "select": "id,name,voice_id,settings,allow_overrides", "limit": "1"},
+                headers={**headers, "Accept": "application/json"},
+            )
+            presets = preset_response.json() if preset_response.status_code == 200 else []
+            if not presets:
+                raise HTTPException(status_code=409, detail="The voice preset linked to this API key is unavailable")
+            preset = presets[0]
+            if voice_id and not preset["allow_overrides"]:
+                raise HTTPException(status_code=403, detail="This API key is locked to its selected voice preset")
+            if not voice_id or not preset["allow_overrides"]:
+                voice_id = preset["voice_id"]
+        elif not voice_id:
+            raise HTTPException(status_code=400, detail="This legacy API key requires voice_id. Create a preset-bound key for preset-based requests.")
         voice_response = await client.get(
             f"{SUPABASE_URL}/rest/v1/sonivox_voices",
-            params={"id": f"eq.{data.voice_id}", "user_id": f"eq.{user_id}",
+            params={"id": f"eq.{voice_id}", "user_id": f"eq.{user_id}",
                     "select": "id,sample_path", "limit": "1"},
             headers={**headers, "Accept": "application/json"},
         )
@@ -263,7 +282,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
             history = await client.post(
                 f"{SUPABASE_URL}/rest/v1/sonivox_generations",
                 headers={**headers, "Content-Type": "application/json"},
-                json={"id": generation_id, "user_id": user_id, "voice_id": data.voice_id,
+                json={"id": generation_id, "user_id": user_id, "voice_id": voice_id,
                       "input_text": text, "status": "completed", "audio_path": audio_path,
                       "duration_ms": duration_ms},
             )
@@ -288,7 +307,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
                 audio_url = SUPABASE_URL + "/storage/v1" + audio_url
             return {"id": generation_id, "audio_url": audio_url,
                     "audio_path": audio_path, "duration_ms": duration_ms,
-                    "characters_used": len(text)}
+                    "characters_used": len(text), "preset": preset["name"] if preset else None}
         except Exception:
             try:
                 await client.post(
