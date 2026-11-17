@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+import hashlib
 import logging
 import os
 import time
@@ -26,6 +27,7 @@ TTS_API = os.getenv(
 API_SECRET = os.getenv("ULTRON_VOICE_SECRET", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
 VOICE_BUCKET = "sonivox-voices"
 
 
@@ -134,6 +136,168 @@ async def get_usage(authorization: str = Header(default="")):
         used = int(rows[0]["characters_used"]) if rows else 0
         return {"plan": "Free", "monthly_limit": 20000, "used": used,
                 "remaining": max(0, 20000 - used), "billing_enabled": False}
+
+
+def admin_headers() -> dict:
+    if not SUPABASE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Developer API is not configured yet")
+    return {"apikey": SUPABASE_SECRET_KEY, "Authorization": f"Bearer {SUPABASE_SECRET_KEY}"}
+
+
+async def get_api_key_owner(client: httpx.AsyncClient, raw_key: str) -> tuple[dict, dict]:
+    if not raw_key.startswith("svx_live_") or len(raw_key) < 40:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    digest = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+    response = await client.get(
+        f"{SUPABASE_URL}/rest/v1/sonivox_api_keys",
+        params={"key_hash": f"eq.{digest}", "revoked_at": "is.null",
+                "select": "id,user_id,name", "limit": "1"},
+        headers={**admin_headers(), "Accept": "application/json"},
+    )
+    if response.status_code != 200:
+        logger.error("API key lookup failed: HTTP %s", response.status_code)
+        raise HTTPException(status_code=503, detail="Could not validate API key")
+    rows = response.json()
+    if not rows:
+        raise HTTPException(status_code=401, detail="Invalid or revoked API key")
+    key_row = rows[0]
+    await client.patch(
+        f"{SUPABASE_URL}/rest/v1/sonivox_api_keys",
+        params={"id": f"eq.{key_row['id']}"},
+        headers={**admin_headers(), "Content-Type": "application/json"},
+        json={"last_used_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+    )
+    return key_row, admin_headers()
+
+
+@app.get("/v1/voices")
+async def developer_list_voices(authorization: str = Header(default="")):
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Provide your SONIVOX API key as a Bearer token")
+    raw_key = authorization.split(" ", 1)[1].strip()
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        key_row, headers = await get_api_key_owner(client, raw_key)
+        response = await client.get(
+            f"{SUPABASE_URL}/rest/v1/sonivox_voices",
+            params={"user_id": f"eq.{key_row['user_id']}",
+                    "select": "id,name,created_at", "order": "created_at.desc"},
+            headers={**headers, "Accept": "application/json"},
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail="Could not load voice profiles")
+        return {"voices": response.json()}
+
+
+@app.post("/v1/speech")
+async def developer_generate_speech(data: SpeechRequest, authorization: str = Header(default="")):
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Provide your SONIVOX API key as a Bearer token")
+    raw_key = authorization.split(" ", 1)[1].strip()
+    text = data.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Enter some text first")
+    if data.lang not in {"eng", "yor", "hau", "ibo", "ful"}:
+        raise HTTPException(status_code=400, detail="Unsupported language")
+    timeout = httpx.Timeout(connect=15.0, read=100.0, write=45.0, pool=15.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        key_row, headers = await get_api_key_owner(client, raw_key)
+        user_id = key_row["user_id"]
+        voice_response = await client.get(
+            f"{SUPABASE_URL}/rest/v1/sonivox_voices",
+            params={"id": f"eq.{data.voice_id}", "user_id": f"eq.{user_id}",
+                    "select": "id,sample_path", "limit": "1"},
+            headers={**headers, "Accept": "application/json"},
+        )
+        voices = voice_response.json() if voice_response.status_code == 200 else []
+        if not voices:
+            raise HTTPException(status_code=404, detail="Voice profile not found for this API account")
+        sample_path = voices[0]["sample_path"]
+        if not sample_path.startswith(f"{user_id}/") or ".." in sample_path.split("/"):
+            raise HTTPException(status_code=403, detail="Invalid voice sample path")
+        sample_response = await client.get(
+            f"{SUPABASE_URL}/storage/v1/object/{VOICE_BUCKET}/{quote(sample_path, safe='/')}",
+            headers=headers,
+        )
+        if sample_response.status_code != 200:
+            raise HTTPException(status_code=404, detail="Voice sample could not be loaded")
+        voice_b64 = base64.b64encode(sample_response.content).decode("ascii")
+        reservation_id = str(uuid.uuid4())
+        reserve = await client.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/reserve_sonivox_characters_for_user",
+            headers={**headers, "Content-Type": "application/json"},
+            json={"p_user_id": user_id, "p_request_id": reservation_id, "p_characters": len(text)},
+        )
+        if reserve.status_code != 200:
+            logger.error("Developer API reservation failed: HTTP %s", reserve.status_code)
+            raise HTTPException(status_code=503, detail="Could not verify monthly usage")
+        if not reserve.json().get("allowed"):
+            raise HTTPException(status_code=402, detail="Monthly free character allowance exhausted")
+        try:
+            tts = await client.post(
+                f"{TTS_API}/v1/tts",
+                json={"text": text, "lang": data.lang, "format": "wav",
+                      "voice_wav_base64": voice_b64},
+            )
+            if tts.status_code == 429:
+                raise HTTPException(status_code=503, detail="Voice provider is busy; retry shortly")
+            tts.raise_for_status()
+            audio = tts.content
+            if not audio.startswith(b"RIFF"):
+                raise HTTPException(status_code=502, detail="Voice provider returned invalid WAV audio")
+            duration_ms = None
+            try:
+                with wave.open(io.BytesIO(audio), "rb") as wav:
+                    duration_ms = int(wav.getnframes() / wav.getframerate() * 1000)
+            except (wave.Error, ZeroDivisionError):
+                pass
+            generation_id = str(uuid.uuid4())
+            audio_path = f"{user_id}/generations/{generation_id}.wav"
+            upload = await client.post(
+                f"{SUPABASE_URL}/storage/v1/object/{VOICE_BUCKET}/{quote(audio_path, safe='/')}",
+                headers={**headers, "Content-Type": "audio/wav", "x-upsert": "false"},
+                content=audio,
+            )
+            if upload.status_code not in (200, 201):
+                raise HTTPException(status_code=502, detail="Generated audio could not be stored")
+            history = await client.post(
+                f"{SUPABASE_URL}/rest/v1/sonivox_generations",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"id": generation_id, "user_id": user_id, "voice_id": data.voice_id,
+                      "input_text": text, "status": "completed", "audio_path": audio_path,
+                      "duration_ms": duration_ms},
+            )
+            if history.status_code not in (200, 201):
+                raise HTTPException(status_code=502, detail="Could not save generation history")
+            finish = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/finish_sonivox_reservation_for_user",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"p_user_id": user_id, "p_request_id": reservation_id, "p_success": True},
+            )
+            if finish.status_code != 200:
+                raise HTTPException(status_code=502, detail="Could not finalize usage reservation")
+            signed = await client.post(
+                f"{SUPABASE_URL}/storage/v1/object/sign/{VOICE_BUCKET}/{quote(audio_path, safe='/')}",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"expiresIn": 3600},
+            )
+            signed.raise_for_status()
+            signed_data = signed.json()
+            audio_url = signed_data.get("signedURL") or signed_data.get("signedUrl")
+            if audio_url and audio_url.startswith("/"):
+                audio_url = SUPABASE_URL + "/storage/v1" + audio_url
+            return {"id": generation_id, "audio_url": audio_url,
+                    "audio_path": audio_path, "duration_ms": duration_ms,
+                    "characters_used": len(text)}
+        except Exception:
+            try:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/finish_sonivox_reservation_for_user",
+                    headers={**headers, "Content-Type": "application/json"},
+                    json={"p_user_id": user_id, "p_request_id": reservation_id, "p_success": False},
+                )
+            except Exception:
+                logger.exception("Could not refund failed developer API reservation")
+            raise
 
 
 @app.post("/api/speech")
