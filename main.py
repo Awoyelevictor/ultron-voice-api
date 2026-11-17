@@ -68,6 +68,11 @@ async def home():
     return FileResponse("web/index.html")
 
 
+@app.get("/auth/callback")
+async def auth_callback_page():
+    return FileResponse("web/auth-callback.html")
+
+
 @app.get("/signin")
 async def sign_in_page():
     return FileResponse("web/signin.html")
