@@ -40,10 +40,11 @@ async function enterWorkspace() {
   };
   document.getElementById("generate-button").disabled = false;
   document.getElementById("add-voice-button").disabled = false;
-  document.getElementById("create-key-button").disabled = true;
+  document.getElementById("create-key-button").disabled = false;
   await loadVoices();
   await loadStats();
   await loadUsage();
+  await loadApiKeys();
 }
 function lockWorkspace() {
   currentSession = null;
@@ -217,7 +218,90 @@ document.getElementById("generate-button").addEventListener("click", async () =>
     await loadUsage();
   }
 });
-document.getElementById("create-key-button").onclick = () => notify("Personal API keys are the next integration milestone; speech playground is live first.");
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,"0")).join("");
+}
+async function loadApiKeys() {
+  const container = document.getElementById("api-key-list");
+  const {data,error} = await supabase.from("sonivox_api_keys")
+    .select("id,name,key_prefix,created_at,last_used_at,revoked_at")
+    .order("created_at",{ascending:false});
+  if (error) return notify("Could not load API keys: " + error.message);
+  container.innerHTML = "";
+  const keys = data || [];
+  if (!keys.length) {
+    container.innerHTML = '<div class="empty-library keys-empty"><div class="empty-icon">⌘</div><strong>No API keys yet</strong><p>Create your first key to connect an application.</p></div>';
+    return;
+  }
+  keys.forEach(key => {
+    const card = document.createElement("div");
+    card.className = "api-key-row";
+    const copy = document.createElement("div");
+    copy.className = "api-key-copy";
+    const name = document.createElement("strong");
+    name.textContent = key.name;
+    const prefix = document.createElement("code");
+    prefix.textContent = key.key_prefix + "••••••••";
+    const meta = document.createElement("small");
+    meta.textContent = "Created " + new Date(key.created_at).toLocaleDateString() +
+      (key.last_used_at ? " · Last used " + new Date(key.last_used_at).toLocaleString() : " · Never used");
+    copy.append(name,prefix,meta);
+    const status = document.createElement("span");
+    status.className = key.revoked_at ? "key-status revoked" : "key-status active";
+    status.textContent = key.revoked_at ? "REVOKED" : "ACTIVE";
+    card.append(copy,status);
+    if (!key.revoked_at) {
+      const revoke = document.createElement("button");
+      revoke.className = "text-button";
+      revoke.textContent = "Revoke";
+      revoke.onclick = async () => {
+        if (!confirm("Revoke this API key? Applications using it will stop working immediately.")) return;
+        const {error:updateError} = await supabase.from("sonivox_api_keys")
+          .update({revoked_at:new Date().toISOString()}).eq("id",key.id);
+        if (updateError) return notify("Could not revoke key: " + updateError.message);
+        notify("API key revoked.");
+        await loadApiKeys();
+      };
+      card.append(revoke);
+    }
+    container.append(card);
+  });
+}
+async function createApiKey() {
+  const name = prompt("Give this API key a name (for example, My Node.js app):");
+  if (!name?.trim()) return;
+  const button = document.getElementById("create-key-button");
+  button.disabled = true;
+  try {
+    const random = crypto.getRandomValues(new Uint8Array(32));
+    const secret = "svx_live_" + Array.from(random, byte => byte.toString(16).padStart(2,"0")).join("");
+    const hash = await sha256Hex(secret);
+    const prefix = secret.slice(0,16);
+    const {error} = await supabase.from("sonivox_api_keys").insert({
+      user_id:currentSession.user.id,
+      name:name.trim().slice(0,80),
+      key_prefix:prefix,
+      key_hash:hash
+    });
+    if (error) throw error;
+    document.getElementById("created-api-key").textContent = secret;
+    document.getElementById("key-created").classList.remove("hidden");
+    document.getElementById("copy-created-key").onclick = async () => {
+      await navigator.clipboard.writeText(secret);
+      notify("API key copied.");
+    };
+    notify("API key created. Copy it now; it will not be shown again.");
+    await loadApiKeys();
+    document.getElementById("key-created").scrollIntoView({behavior:"smooth",block:"center"});
+  } catch (error) {
+    notify("Could not create API key: " + (error.message || "Unknown error"));
+  } finally {
+    button.disabled = false;
+  }
+}
+document.getElementById("create-key-button").onclick = createApiKey;
 document.querySelector(".help-button").onclick = () => notify("Need help? Upload a WAV voice sample, select it, type a script, and generate.");
 async function init() {
   document.getElementById("app").classList.add("app-locked");
