@@ -212,10 +212,9 @@ document.getElementById("generate-button").addEventListener("click", async () =>
     await loadUsage();
   } catch (error) {
     notify(error.message || "Speech generation failed.");
-    await loadUsage();
   } finally {
-    button.disabled = false;
     button.innerHTML = '<span>✦</span> Generate speech <span class="button-arrow">→</span>';
+    await loadUsage();
   }
 });
 document.getElementById("create-key-button").onclick = () => notify("Personal API keys are the next integration milestone; speech playground is live first.");
