@@ -288,13 +288,6 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
             )
             if history.status_code not in (200, 201):
                 raise HTTPException(status_code=502, detail="Could not save generation history")
-            finish = await client.post(
-                f"{SUPABASE_URL}/rest/v1/rpc/finish_sonivox_reservation_for_user",
-                headers={**headers, "Content-Type": "application/json"},
-                json={"p_user_id": user_id, "p_request_id": reservation_id, "p_success": True},
-            )
-            if finish.status_code != 200:
-                raise HTTPException(status_code=502, detail="Could not finalize usage reservation")
             signed = await client.post(
                 f"{SUPABASE_URL}/storage/v1/object/sign/{VOICE_BUCKET}/{quote(audio_path, safe='/')}",
                 headers={**headers, "Content-Type": "application/json"},
@@ -303,8 +296,17 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
             signed.raise_for_status()
             signed_data = signed.json()
             audio_url = signed_data.get("signedURL") or signed_data.get("signedUrl")
-            if audio_url and audio_url.startswith("/"):
+            if not audio_url:
+                raise HTTPException(status_code=502, detail="Could not create a temporary audio link")
+            if audio_url.startswith("/"):
                 audio_url = SUPABASE_URL + "/storage/v1" + audio_url
+            finish = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/finish_sonivox_reservation_for_user",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"p_user_id": user_id, "p_request_id": reservation_id, "p_success": True},
+            )
+            if finish.status_code != 200:
+                raise HTTPException(status_code=502, detail="Could not finalize usage reservation")
             return {"id": generation_id, "audio_url": audio_url,
                     "audio_path": audio_path, "duration_ms": duration_ms,
                     "characters_used": len(text), "preset": preset["name"] if preset else None}
