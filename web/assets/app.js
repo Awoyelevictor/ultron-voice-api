@@ -125,7 +125,7 @@ async function loadStats() {
 }
 const fileInput = document.createElement("input");
 fileInput.type = "file";
-fileInput.accept = "audio/*,.wav,.mp3,.m4a,.mp4,.aac,.ogg,.oga,.opus,.flac,.aiff,.aif,.wma,.webm,.3gp,.amr";
+fileInput.accept = "audio/*,.wav,.mp3,.m4a,.aac,.ogg,.oga,.opus,.flac,.aiff,.aif,.wma,.amr";
 fileInput.hidden = true;
 document.body.appendChild(fileInput);
 
