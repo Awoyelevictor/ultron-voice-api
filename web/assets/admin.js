@@ -49,7 +49,8 @@ async function loadOverview() {
   document.getElementById("keys").textContent = Number(result.counts.api_keys).toLocaleString();
   document.getElementById("limit").textContent = Number(result.free_monthly_character_limit).toLocaleString();
   dashboard.classList.remove("hidden");
-  showState("Administrator verified · Live platform counts loaded.", "success");
+  await loadAdminKeys();
+  showState("Administrator verified · Live platform counts and API key inventory loaded.", "success");
 }
 document.getElementById("refresh").addEventListener("click", () => loadOverview().catch(e => showState(e.message, "error")));
 document.getElementById("signout").addEventListener("click", async () => {
@@ -57,3 +58,36 @@ document.getElementById("signout").addEventListener("click", async () => {
   location.replace("/signin");
 });
 initialize();
+
+async function loadAdminKeys() {
+  const state = document.getElementById("admin-key-state");
+  const rows = document.getElementById("admin-key-rows");
+  state.textContent = "Loading API keys…";
+  rows.innerHTML = "";
+  const response = await fetch("/api/admin/keys", {
+    headers: {Authorization: "Bearer " + session.access_token},
+    cache: "no-store"
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.detail || "Could not load API key inventory.");
+  const keys = result.keys || [];
+  if (!keys.length) { state.textContent = "No API keys have been created."; return; }
+  state.textContent = keys.length + " key records · secrets are never shown";
+  for (const key of keys) {
+    const tr = document.createElement("tr");
+    const values = [
+      key.name + " · " + (key.key_prefix || ""),
+      key.user_id,
+      key.created_at ? new Date(key.created_at).toLocaleString() : "—",
+      key.last_used_at ? new Date(key.last_used_at).toLocaleString() : "Never",
+      key.revoked_at ? "REVOKED" : "ACTIVE"
+    ];
+    for (const value of values) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.append(td);
+    }
+    tr.lastChild.className = key.revoked_at ? "revoked" : "active";
+    rows.append(tr);
+  }
+}
