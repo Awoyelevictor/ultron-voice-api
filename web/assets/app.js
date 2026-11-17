@@ -90,6 +90,27 @@ async function loadVoices() {
     });
   }
 }
+async function loadUsage() {
+  try {
+    const {data:{session}} = await supabase.auth.getSession();
+    const response = await fetch("/api/usage", {
+      headers: {"Authorization":"Bearer " + session.access_token}
+    });
+    const usage = await response.json();
+    if (!response.ok) throw new Error(usage.detail || "Could not load usage");
+    document.getElementById("monthly-used").textContent = usage.used.toLocaleString();
+    document.getElementById("usage-remaining").textContent = usage.remaining.toLocaleString();
+    document.getElementById("usage-used-label").textContent = usage.used.toLocaleString();
+    document.getElementById("usage-meter-fill").style.width =
+      Math.min(100, usage.used / usage.monthly_limit * 100) + "%";
+    const generate = document.getElementById("generate-button");
+    generate.disabled = usage.remaining <= 0;
+    if (usage.remaining <= 0) generate.title = "Your free monthly allowance is used up.";
+    else generate.removeAttribute("title");
+  } catch (error) {
+    notify(error.message || "Could not load usage balance.");
+  }
+}
 async function loadStats() {
   const {count:voiceCount} = await supabase.from("sonivox_voices").select("id",{count:"exact",head:true});
   const {count:generationCount} = await supabase.from("sonivox_generations").select("id",{count:"exact",head:true});
@@ -188,7 +209,7 @@ document.getElementById("generate-button").addEventListener("click", async () =>
     notify("Speech generated successfully.");
     await loadStats();
   } catch (error) {
-    notify(error.message || "Speech generation failed.");
+    notify(error.message || "Speech generation failed.");\n    await loadUsage();
   } finally {
     button.disabled = false;
     button.innerHTML = '<span>✦</span> Generate speech <span class="button-arrow">→</span>';
