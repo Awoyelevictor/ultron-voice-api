@@ -17,7 +17,7 @@ declare
   v_used integer;
   v_limit constant integer := 20000;
 begin
-  if current_setting('request.jwt.claim.role', true) <> 'service_role' then
+  if current_setting('request.jwt.claim.role', true) is distinct from 'service_role' then
     raise exception 'Service role required' using errcode = '42501';
   end if;
   if p_user_id is null or p_request_id is null or p_characters is null
@@ -55,7 +55,7 @@ as $$
 declare
   v_row public.sonivox_usage_reservations%rowtype;
 begin
-  if current_setting('request.jwt.claim.role', true) <> 'service_role' then
+  if current_setting('request.jwt.claim.role', true) is distinct from 'service_role' then
     raise exception 'Service role required' using errcode = '42501';
   end if;
   select * into v_row from public.sonivox_usage_reservations
