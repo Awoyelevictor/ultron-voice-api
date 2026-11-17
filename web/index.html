@@ -195,13 +195,16 @@ print(result["audio_url"])</code></pre>
 
           <h3>9. Common errors</h3>
           <div class="docs-table-wrap"><table class="docs-table"><thead><tr><th>HTTP status</th><th>Meaning</th><th>What to check</th></tr></thead><tbody>
-            <tr><td>400</td><td>Invalid request or unsupported language</td><td>Check the JSON, text length and three-letter language code.</td></tr>
+            <tr><td>400</td><td>Text is blank after trimming, or the language code is unsupported</td><td>Send non-empty text and use one of <code>eng</code>, <code>yor</code>, <code>hau</code>, <code>ibo</code> or <code>ful</code>.</td></tr>
             <tr><td>401</td><td>Missing, invalid or revoked key</td><td>Check the Bearer header and confirm the key is active.</td></tr>
             <tr><td>402</td><td>Monthly character allowance exhausted</td><td>Check the usage balance in your SONIVOX dashboard.</td></tr>
-            <tr><td>403</td><td>Voice override is not permitted</td><td>Remove <code>voice_id</code> or enable overrides on the preset.</td></tr>
+            <tr><td>403</td><td>Voice override is not permitted, or the sample path is invalid</td><td>Remove <code>voice_id</code> for a locked preset, or enable overrides on the preset.</td></tr>
             <tr><td>404</td><td>Voice profile or sample not found</td><td>Use a voice belonging to the API key's account.</td></tr>
             <tr><td>409</td><td>Linked preset unavailable</td><td>Choose an active preset and create a new API key if needed.</td></tr>
-            <tr><td>502 / 503 / 504</td><td>Provider, storage, usage or timeout issue</td><td>Retry carefully after checking the response message and service status.</td></tr>
+            <tr><td>422</td><td>Request validation failed</td><td>Check that <code>text</code> is present and contains 1–1,000 characters, and that the JSON is valid.</td></tr>
+            <tr><td>500</td><td>Unexpected server or upstream request error</td><td>Retry cautiously; if it continues, contact SONIVOX support with the request time.</td></tr>
+            <tr><td>502</td><td>Generated audio, storage, history or signed-link operation failed</td><td>Retry after checking service status. Failed generations should release their reserved characters.</td></tr>
+            <tr><td>503</td><td>Usage verification failed or the voice provider is busy</td><td>Retry after a short delay. No speech is returned for this request.</td></tr>
           </tbody></table></div>
 
           <div class="docs-callout docs-callout-last"><strong>Production checklist</strong><p>Keep keys on your backend, validate user input, handle non-2xx responses, avoid exposing signed audio links publicly, and add your own user authentication and request-rate limits before allowing public traffic. Never ask an end user to paste your private SONIVOX API key into a browser.</p></div>
