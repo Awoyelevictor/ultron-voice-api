@@ -125,28 +125,98 @@ async function loadStats() {
 }
 const fileInput = document.createElement("input");
 fileInput.type = "file";
-fileInput.accept = ".wav,audio/wav,audio/x-wav";
+fileInput.accept = "audio/*,.wav,.mp3,.m4a,.mp4,.aac,.ogg,.oga,.opus,.flac,.aiff,.aif,.wma,.webm,.3gp,.amr";
 fileInput.hidden = true;
 document.body.appendChild(fileInput);
+
+const AUDIO_EXTENSIONS = new Set([
+  "wav","mp3","m4a","mp4","aac","ogg","oga","opus","flac","aiff","aif","wma","webm","3gp","amr"
+]);
+function isAudioFile(file) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  return !file.type.startsWith("video/") &&
+    (file.type.startsWith("audio/") || AUDIO_EXTENSIONS.has(extension));
+}
+function encodeWav16(audioBuffer) {
+  const channels = audioBuffer.numberOfChannels;
+  const frames = audioBuffer.length;
+  const bytesPerSample = 2;
+  const dataSize = frames * channels * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const write = (offset, value) => {
+    for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
+  };
+  write(0,"RIFF");
+  view.setUint32(4,36 + dataSize,true);
+  write(8,"WAVE");
+  write(12,"fmt ");
+  view.setUint32(16,16,true);
+  view.setUint16(20,1,true);
+  view.setUint16(22,channels,true);
+  view.setUint32(24,audioBuffer.sampleRate,true);
+  view.setUint32(28,audioBuffer.sampleRate * channels * bytesPerSample,true);
+  view.setUint16(32,channels * bytesPerSample,true);
+  view.setUint16(34,16,true);
+  write(36,"data");
+  view.setUint32(40,dataSize,true);
+  let offset = 44;
+  for (let frame = 0; frame < frames; frame++) {
+    for (let channel = 0; channel < channels; channel++) {
+      const sample = Math.max(-1,Math.min(1,audioBuffer.getChannelData(channel)[frame]));
+      view.setInt16(offset,sample < 0 ? sample * 0x8000 : sample * 0x7fff,true);
+      offset += 2;
+    }
+  }
+  return new Blob([buffer],{type:"audio/wav"});
+}
+async function convertAudioToWav(file) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error("This browser cannot convert audio. Try Chrome or another modern browser.");
+  const context = new AudioContextClass();
+  try {
+    const encoded = await file.arrayBuffer();
+    const decoded = await context.decodeAudioData(encoded);
+    const sampleRate = 24000;
+    const frames = Math.ceil(decoded.duration * sampleRate);
+    if (!frames || frames > sampleRate * 600) {
+      throw new Error("Audio must be shorter than 10 minutes.");
+    }
+    const offline = new OfflineAudioContext(1,frames,sampleRate);
+    const source = offline.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offline.destination);
+    source.start(0);
+    const mono = await offline.startRendering();
+    return encodeWav16(mono);
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
 function chooseVoiceFile() { fileInput.click(); }
 document.getElementById("add-voice-button").onclick = chooseVoiceFile;
 document.getElementById("empty-add-button").onclick = chooseVoiceFile;
-document.getElementById("upload-info-button").onclick = () => notify("Upload a WAV sample of a voice you own or have explicit permission to use. Consent is required.");
+document.getElementById("upload-info-button").onclick = () => notify("Choose an audio file such as WAV, MP3, M4A, AAC, OGG, FLAC or OPUS. SONIVOX converts supported audio to WAV before saving. Video files are not accepted.");
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files?.[0];
   fileInput.value = "";
   if (!file) return;
-  if (!file.name.toLowerCase().endsWith(".wav") || file.type && !["audio/wav","audio/x-wav","audio/wave"].includes(file.type)) {
-    return notify("For this first release, upload a WAV audio file.");
-  }
+  if (!isAudioFile(file)) return notify("Please choose an audio file. Video and non-audio files are not supported.");
   if (file.size > 50 * 1024 * 1024) return notify("The maximum upload size is 50 MB.");
   const name = prompt("Give this voice profile a name:");
   if (!name?.trim()) return;
   if (!confirm("Confirm that this is your voice or you have explicit permission from the speaker to use and generate speech with it.")) return;
   const userId = currentSession.user.id;
+  let wavFile;
+  try {
+    notify("Preparing and converting your audio…");
+    wavFile = await convertAudioToWav(file);
+  } catch (error) {
+    return notify(error.message || "This audio format could not be decoded by your browser. Try converting it to MP3 or WAV.");
+  }
   const path = userId + "/" + crypto.randomUUID() + ".wav";
   notify("Uploading your private voice sample…");
-  const {error:uploadError} = await supabase.storage.from("sonivox-voices").upload(path,file,{contentType:"audio/wav",upsert:false});
+  const {error:uploadError} = await supabase.storage.from("sonivox-voices").upload(path,wavFile,{contentType:"audio/wav",upsert:false});
   if (uploadError) return notify("Upload failed: " + uploadError.message);
   const {error:insertError} = await supabase.from("sonivox_voices").insert({
     user_id:userId,name:name.trim().slice(0,80),sample_path:path,consent_confirmed:true
@@ -155,7 +225,7 @@ fileInput.addEventListener("change", async () => {
     await supabase.storage.from("sonivox-voices").remove([path]);
     return notify("Could not save voice profile: " + insertError.message);
   }
-  notify("Voice profile saved.");
+  notify("Audio converted and voice profile saved.");
   await loadVoices();
   await loadStats();
   showPage("voices");
