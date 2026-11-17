@@ -205,7 +205,7 @@ async function init() {
     lockWorkspace();
     return;
   }
-  supabase = createClient(config.supabase_url,config.publishable_key);
+  supabase = createClient(config.supabase_url,config.publishable_key,{auth:{flowType:"pkce",detectSessionInUrl:true,persistSession:true,autoRefreshToken:true}});
   const {data:{session}} = await supabase.auth.getSession();
   if (session) {
     currentSession = session;
