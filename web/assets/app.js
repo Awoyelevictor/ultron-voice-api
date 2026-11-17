@@ -304,17 +304,45 @@ async function sha256Hex(value) {
 }
 async function loadApiKeys() {
   const container = document.getElementById("api-key-list");
+  if (!currentSession?.user?.id) {
+    container.innerHTML = '<div class="empty-library keys-empty"><strong>Sign in to view your API keys</strong></div>';
+    return;
+  }
+  container.innerHTML = '<div class="empty-library keys-empty"><p>Loading your saved API keys…</p></div>';
   const {data,error} = await supabase.from("sonivox_api_keys")
-    .select("id,name,key_prefix,created_at,last_used_at,revoked_at,preset_id,preset:sonivox_voice_presets(name,allow_overrides)")
+    .select("id,user_id,name,key_prefix,created_at,last_used_at,revoked_at,preset_id")
+    .eq("user_id",currentSession.user.id)
     .order("created_at",{ascending:false});
-  if (error) return notify("Could not load API keys: " + error.message);
-  container.innerHTML = "";
+  if (error) {
+    console.error("SONIVOX API-key query failed:", error);
+    container.innerHTML = '<div class="empty-library keys-empty"><strong>Could not load API keys</strong><p>' +
+      String(error.message || "Database request failed").replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch])) +
+      '</p></div>';
+    notify("Could not load API keys: " + error.message);
+    return;
+  }
   const keys = data || [];
+  const presetIds = [...new Set(keys.map(key => key.preset_id).filter(Boolean))];
+  let presetById = {};
+  if (presetIds.length) {
+    const {data:presets,error:presetError} = await supabase.from("sonivox_voice_presets")
+      .select("id,name,allow_overrides")
+      .eq("user_id",currentSession.user.id)
+      .in("id",presetIds);
+    if (presetError) {
+      console.error("SONIVOX preset metadata query failed:", presetError);
+      notify("Keys loaded, but preset details could not be loaded: " + presetError.message);
+    } else {
+      presetById = Object.fromEntries((presets || []).map(preset => [preset.id,preset]));
+    }
+  }
+  container.innerHTML = "";
   if (!keys.length) {
-    container.innerHTML = '<div class="empty-library keys-empty"><div class="empty-icon">⌘</div><strong>No API keys yet</strong><p>Create your first key to connect an application.</p></div>';
+    container.innerHTML = '<div class="empty-library keys-empty"><div class="empty-icon">⌘</div><strong>No API keys yet</strong><p>No keys are currently saved under this signed-in account.</p></div>';
     return;
   }
   keys.forEach(key => {
+    const preset = presetById[key.preset_id];
     const card = document.createElement("div");
     card.className = "api-key-row";
     const copy = document.createElement("div");
@@ -326,7 +354,7 @@ async function loadApiKeys() {
     const meta = document.createElement("small");
     meta.textContent = "Created " + new Date(key.created_at).toLocaleDateString() +
       (key.last_used_at ? " · Last used " + new Date(key.last_used_at).toLocaleString() : " · Never used") +
-      (key.preset?.name ? " · Preset: " + key.preset.name + (key.preset.allow_overrides ? " · Overrides on" : " · Locked") : " · Legacy voice selection");
+      (preset?.name ? " · Preset: " + preset.name + (preset.allow_overrides ? " · Overrides on" : " · Locked") : (key.preset_id ? " · Preset details unavailable" : " · Legacy voice selection"));
     copy.append(name,prefix,meta);
     const status = document.createElement("span");
     status.className = key.revoked_at ? "key-status revoked" : "key-status active";
@@ -339,7 +367,9 @@ async function loadApiKeys() {
       revoke.onclick = async () => {
         if (!confirm("Revoke this API key? Applications using it will stop working immediately.")) return;
         const {error:updateError} = await supabase.from("sonivox_api_keys")
-          .update({revoked_at:new Date().toISOString()}).eq("id",key.id);
+          .update({revoked_at:new Date().toISOString()})
+          .eq("id",key.id)
+          .eq("user_id",currentSession.user.id);
         if (updateError) return notify("Could not revoke key: " + updateError.message);
         notify("API key revoked.");
         await loadApiKeys();
