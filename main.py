@@ -83,6 +83,11 @@ async def sign_up_page():
     return FileResponse("web/signup.html")
 
 
+@app.get("/reset-password")
+async def reset_password_page():
+    return FileResponse("web/reset-password.html")
+
+
 @app.get("/api/config")
 async def public_config():
     if not SUPABASE_URL or not SUPABASE_PUBLISHABLE_KEY:
