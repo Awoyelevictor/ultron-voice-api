@@ -114,7 +114,15 @@ async def generate_silencio_audio(client: httpx.AsyncClient, text: str, voice_sa
                     result_data = json.loads("\n".join(data_lines))
                     break
                 if event_name == "error":
-                    raise HTTPException(status_code=502, detail="Silencio speech generation failed")
+                    upstream_error = "\\n".join(data_lines).strip()
+                    if upstream_error:
+                        logger.error("Silencio synthesis job failed; upstream error: %s", upstream_error[:1000])
+                    else:
+                        logger.error("Silencio synthesis job failed without an upstream error payload")
+                    raise HTTPException(
+                        status_code=502,
+                        detail="Silencio could not complete speech generation. Please retry; if the issue continues, contact support.",
+                    )
                 event_name, data_lines = "", []
         if not isinstance(result_data, list) or not result_data or not isinstance(result_data[0], dict):
             raise HTTPException(status_code=502, detail="Silencio returned no valid speech audio")
