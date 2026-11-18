@@ -249,3 +249,40 @@ Run a two-track evaluation before selecting the final route:
 - **Track B — Africa TTS continuity / multilingual path:** obtain provider confirmation and evaluate whether a tag-aware version can be trained or adapted while preserving supported African languages. Resolve the Africa TTS checkpoint's CC-BY-NC-4.0 model restriction before commercial use; do not assume the MIT code license covers the weights.
 
 Do not replace the production provider or merge either model into the production service during this evaluation.
+
+
+## 12. Phase 1 verification update — 18 November 2026
+
+### Silencio-2 interface verified from its public Space source
+
+The public Hugging Face Space source confirms the model is used as a **complete English speech synthesizer**. Its synthesize function accepts text containing inline sound tags, an optional uploaded reference clip (up to 10 seconds), and returns one 24 kHz mono waveform. The Space supports [laugh], [sigh], [gasp], [cough], and [clear_throat]; it also supports emotion/delivery tags such as <happy>, <sad>, <angry>, <fear>, <surprised>, and <whisper>.
+
+This changes the initial hybrid assumption:
+
+- Silencio-2 is **not documented as an expression-only audio renderer**.
+- Its documented path generates the spoken words and tagged vocal events together in one model pass.
+- Therefore, do not split Africa TTS speech and Silencio-2 output and concatenate them as if Silencio-2 returned isolated cough/sigh clips. That could duplicate speech and create an audible voice/timbre discontinuity.
+- The safer first prototype is **engine routing**: Africa TTS for the current multilingual path; Silencio-2 for English expressive requests, subject to reference-voice similarity and commercial licensing checks.
+- True cross-engine event-only rendering remains a separate research task. It requires a validated method to generate isolated expressions in the same speaker identity and assemble them without artifacts.
+
+### Test execution result
+
+The Silencio-2 Space's parameter schema was inspected successfully. It supports an optional uploaded voice reference and deterministic seed selection. An inference attempt was made with a bundled test voice and a sentence containing [sigh] and [cough], but the Space rejected execution because its ZeroGPU quota was exhausted. **No audio was generated or evaluated in this run.** Do not report this as a successful listening test.
+
+The exact production Modal endpoint's /openapi.json and /docs could not be retrieved through the available inspection route. The repository gateway source still confirms the outgoing request fields (text, lang, format: wav, voice_wav_base64), but the deployed provider version and any undocumented controls remain unverified.
+
+### Licensing clarification
+
+The current Silencio-2 model card and NOTICE identify CC-BY-4.0 weights and MIT inference code, and identify Basis Global Emotions as a development dataset. The Space source repeats the attribution requirement. This is more specific than a generic claim that the model is simply commercially cleared: review the full CC-BY terms, all upstream model notices, dataset terms, and any applicable obligations before commercial deployment. Africa TTS's published model/default-voice CC-BY-NC-4.0 restriction remains a separate and significant commercial-use blocker unless the deployed provider can establish a different license or permission.
+
+### Revised Phase 1 decision
+
+1. Keep the existing production Africa TTS route unchanged.
+2. Treat Silencio-2 as an English expressive **alternative route**, not an expression-only add-on.
+3. Do not combine the two waveforms until a separately validated event-only method exists.
+4. Obtain the production provider's exact model/version/schema and licensing confirmation.
+5. Retry Silencio-2 inference when Space compute is available, first with a bundled voice, then with a consented SONIVOX reference sample.
+6. Compare plain and expressive output for voice similarity, intelligibility, event placement, repeatability, latency, and cost.
+7. Do not start implementation or change production until the test results and licensing gate support a decision.
+
+**Status remains Phase 1 — provider capability verification.** This update is documentation-only. No production code, database, secrets, Render configuration, model deployment, or Singing Studio component has been changed.
