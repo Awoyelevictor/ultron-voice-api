@@ -160,6 +160,8 @@ Content-Type: application/json</code></pre>
             <tr><td><code>text</code></td><td>Yes</td><td>The words to convert into speech. Send between 1 and 1,000 characters per request.</td></tr>
             <tr><td><code>lang</code></td><td>No</td><td>Language code. Defaults to <code>eng</code> (English).</td></tr>
             <tr><td><code>engine</code></td><td>No</td><td><code>africa</code> (default) or <code>silencio</code>. Silencio-2 currently accepts English only.</td></tr>
+            <tr><td><code>emotion</code></td><td>No</td><td>Silencio-only emotion: <code>none</code>, <code>happy</code>, <code>sad</code>, <code>angry</code>, <code>fear</code>, <code>surprised</code> or <code>whisper</code>. Defaults to <code>none</code>.</td></tr>
+            <tr><td><code>silencio_voice_id</code></td><td>No</td><td>Silencio speaker selector. Defaults to <code>260</code>. Accepted IDs: <code>1320</code>, <code>2094</code>, <code>260</code>, <code>3575</code>, <code>5639</code>, <code>6930</code>, <code>7127</code> and <code>7729</code>.</td></tr>
             <tr><td><code>voice_id</code></td><td>Usually no</td><td>Not needed for a preset-bound key. Only send it when the key owner enabled voice overrides. Older keys without a preset require it.</td></tr>
           </tbody></table></div>
 
