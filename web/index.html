@@ -16,26 +16,26 @@
   <div id="app" class="app-locked">
     <aside class="sidebar" id="sidebar">
       <a class="brand" href="#" data-page="home"><span class="brand-mark">S</span><span>SONI<span class="brand-accent">VOX</span></span></a>
-      <div class="workspace-label">WORKSPACE</div>
+      <div class="workspace-label">STUDIOS & WORKSPACE</div>
       <nav class="nav">
-        <button class="nav-link active" data-page="dashboard"><span class="nav-icon">◫</span>Overview</button>
+        <button class="nav-link active" data-page="dashboard"><span class="nav-icon">◫</span>Voice Studio</button>
         <button class="nav-link" data-page="voices"><span class="nav-icon">◉</span>My voices</button>
         <button class="nav-link" data-page="singing"><span class="nav-icon">♫</span>Singing Studio</button>
         <button class="nav-link" data-page="keys"><span class="nav-icon">⌘</span>API keys</button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="plan-card"><div class="plan-top"><span class="plan-dot"></span> STARTER WORKSPACE</div><p>Your private voice studio.</p><button class="text-button" data-page="dashboard">Open studio <span>↗</span></button></div>
+        <div class="plan-card"><div class="plan-top"><span class="plan-dot"></span> STARTER WORKSPACE</div><p>Speech and singing, together in one platform.</p><button class="text-button" data-page="dashboard">Open Voice Studio <span>↗</span></button></div>
         <div class="profile"><div class="avatar">S</div><div class="profile-copy"><strong>Loading account…</strong><small>Secure workspace</small></div><span class="more">•••</span></div>
       </div>
     </aside>
     <main class="main">
       <header class="topbar">
         <button class="mobile-menu" id="menu-toggle" aria-label="Open menu">☰</button>
-        <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="crumb">Overview</strong></div>
+        <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="crumb">Voice Studio</strong></div>
         <div class="top-actions"><span class="status-pill"><i></i> Connected</span><button class="help-button" title="Help">?</button><button class="user-chip" title="Account">S</button></div>
       </header>
       <section class="page" id="page-dashboard">
-        <div class="welcome-row"><div><div class="eyebrow">YOUR VOICE WORKSPACE</div><h1>Make your words <span>sound different.</span></h1><p class="subheading">Create natural-sounding speech with voices that feel unmistakably human.</p></div><div class="date-chip"><span class="live-dot"></span> YOUR STUDIO</div></div>
+        <div class="welcome-row"><div><div class="eyebrow">SONIVOX VOICE STUDIO</div><h1>Make your words <span>sound different.</span></h1><p class="subheading">Create natural-sounding speech with voices that feel unmistakably human.</p></div><div class="date-chip"><span class="live-dot"></span> VOICE STUDIO</div></div>
         <div class="stats-grid">
           <article class="stat-card"><div class="stat-label">VOICE PROFILES <span>◉</span></div><div class="stat-value">0</div><div class="stat-note">Your saved voices</div></article>
           <article class="stat-card"><div class="stat-label">GENERATIONS <span>↗</span></div><div class="stat-value">0</div><div class="stat-note">Audio created</div></article>
@@ -43,7 +43,7 @@
         </div>
         <section class="usage-card"><div class="usage-copy"><div class="eyebrow">YOUR FREE PLAN</div><strong><span id="usage-remaining">20,000</span> characters remaining</strong><p>20,000 characters included every month. Failed generations are refunded.</p></div><div class="usage-meter"><div class="usage-meter-track"><span id="usage-meter-fill"></span></div><small><span id="usage-used-label">0</span> / 20,000 used</small></div><span class="free-pill">FREE</span></section>\n        <div class="studio-layout">
           <section class="panel composer">
-            <div class="panel-heading"><div><div class="eyebrow">SPEECH PLAYGROUND</div><h2>Turn text into speech</h2></div><span class="soft-tag">CREATE</span></div>
+            <div class="panel-heading"><div><div class="eyebrow">TEXT-TO-SPEECH</div><h2>Turn text into speech</h2></div><span class="soft-tag">CREATE</span></div>
             <label class="field-label" for="speech-text">YOUR SCRIPT <span id="char-count">0 / 1,000</span></label>
             <textarea id="speech-text" maxlength="1000" placeholder="Type or paste something you want to hear…"></textarea>
             <div class="field-row"><div class="field-group"><label class="field-label" for="voice-select">VOICE</label><select id="voice-select"><option value="">Add a voice profile first</option></select></div><div class="field-group"><label class="field-label" for="language-select">LANGUAGE</label><select id="language-select"><option value="eng">English</option><option value="yor">Yoruba</option><option value="hau">Hausa</option><option value="ibo">Igbo</option><option value="ful">Fulfulde</option></select></div></div>

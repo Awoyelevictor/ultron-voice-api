@@ -19,7 +19,7 @@ function showPage(page) {
     document.getElementById("page-" + name).classList.toggle("hidden", name !== page);
   });
   document.querySelectorAll(".nav-link").forEach(link => link.classList.toggle("active", link.dataset.page === page));
-  document.getElementById("crumb").textContent = ({dashboard:"Overview",voices:"My voices",singing:"Singing Studio",keys:"API keys"})[page];
+  document.getElementById("crumb").textContent = ({dashboard:"Voice Studio",voices:"My voices",singing:"Singing Studio",keys:"API keys"})[page];
   document.getElementById("sidebar").classList.remove("open");
   window.scrollTo({top:0,behavior:"smooth"});
 }
