@@ -266,7 +266,7 @@ function syncSpeechEngineOptions() {
   });
   if (silencioSelected && languageSelect.value !== "eng") languageSelect.value = "eng";
   document.getElementById("engine-hint").textContent = silencioSelected
-    ? "Silencio-2 currently supports English only and uses your selected saved voice sample."
+    ? "English only. Your selected voice sample is sent to the Silencio Hugging Face Space for processing."
     : "Africa TTS supports English, Yoruba, Hausa, Igbo and Fulfulde.";
 }
 engineSelect.addEventListener("change", syncSpeechEngineOptions);
