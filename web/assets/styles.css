@@ -181,6 +181,10 @@
   margin-bottom: 28px;
 }
 
+/* Silencio-specific speech controls */
+.silencio-options{margin:14px 0 18px;align-items:start}
+.silencio-options .microcopy{grid-column:1/-1;margin-top:-3px}
+
 /* Independent activity libraries for the two studios */
 .history-panel{margin-top:18px}
 .history-list{display:grid;gap:10px}

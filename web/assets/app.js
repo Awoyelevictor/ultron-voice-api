@@ -319,6 +319,24 @@ async function deleteVoice(voice) {
   await loadVoices();
   await loadStats();
 }
+const engineSelect = document.getElementById("engine-select");
+const languageSelect = document.getElementById("language-select");
+function syncSpeechEngineOptions() {
+  const silencioSelected = engineSelect.value === "silencio";
+  [...languageSelect.options].forEach(option => {
+    option.disabled = silencioSelected && option.value !== "eng";
+  });
+  if (silencioSelected && languageSelect.value !== "eng") languageSelect.value = "eng";
+
+  document.getElementById("engine-hint").textContent = silencioSelected
+    ? "English only. Your selected voice sample is sent to the Silencio Hugging Face Space for processing."
+    : "Africa TTS supports English, Yoruba, Hausa, Igbo and Fulfulde.";
+
+  document.getElementById("silencio-options").classList.toggle("hidden", !silencioSelected);
+}
+engineSelect.addEventListener("change", syncSpeechEngineOptions);
+syncSpeechEngineOptions();
+
 document.getElementById("speech-text").addEventListener("input", event => {
   document.getElementById("char-count").textContent = event.target.value.length + " / 1,000";
 });
@@ -326,6 +344,7 @@ document.getElementById("generate-button").addEventListener("click", async () =>
   const text = document.getElementById("speech-text").value.trim();
   const voiceId = document.getElementById("voice-select").value;
   const lang = document.getElementById("language-select").value;
+  const engine = engineSelect.value;
   if (!text) return notify("Write something to generate first.");
   if (!voiceId) return notify("Add and select a voice profile first.");
   const button = document.getElementById("generate-button");
@@ -336,7 +355,14 @@ document.getElementById("generate-button").addEventListener("click", async () =>
     const response = await fetch("/api/speech",{
       method:"POST",
       headers:{"Content-Type":"application/json","Authorization":"Bearer " + session.access_token},
-      body:JSON.stringify({text,voice_id:voiceId,lang})
+      body:JSON.stringify({
+        text,
+        voice_id:voiceId,
+        lang,
+        engine,
+        emotion:engine === "silencio" ? document.getElementById("silencio-emotion").value : "none",
+        silencio_voice_id:engine === "silencio" ? document.getElementById("silencio-speaker").value : "260"
+      })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.detail || "Speech generation failed");

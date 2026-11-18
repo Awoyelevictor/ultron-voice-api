@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import io
 import hashlib
 import logging
@@ -8,7 +9,7 @@ import time
 import tempfile
 import uuid
 import wave
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
@@ -25,6 +26,10 @@ TTS_API = os.getenv(
     "TTS_API_URL",
     "https://michsethowusuwfp3--africa-tts-api-api.us-east.modal.run",
 ).rstrip("/")
+SILENCIO_API = os.getenv(
+    "SILENCIO_API_URL",
+    "https://hugging-apps-silencio-2.hf.space",
+).rstrip("/")
 API_SECRET = os.getenv("ULTRON_VOICE_SECRET", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
@@ -38,6 +43,143 @@ class SpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
     voice_id: str | None = None
     lang: str = "eng"
+    engine: str = "africa"
+    emotion: str = "none"
+    silencio_voice_id: str = "260"
+
+
+def validate_speech_engine(data: SpeechRequest) -> None:
+    if data.engine not in {"africa", "silencio"}:
+        raise HTTPException(status_code=400, detail="Engine must be 'africa' or 'silencio'")
+    if data.engine == "silencio":
+        if data.lang != "eng":
+            raise HTTPException(status_code=400, detail="Silencio-2 currently supports English only. Choose Africa TTS for other languages.")
+        if data.emotion not in {"none", "happy", "sad", "angry", "fear", "surprised", "whisper"}:
+            raise HTTPException(status_code=400, detail="Unsupported Silencio emotion")
+        if data.silencio_voice_id not in {"1320", "2094", "260", "3575", "5639", "6930", "7127", "7729"}:
+            raise HTTPException(status_code=400, detail="Unsupported Silencio speaker ID")
+
+
+async def generate_silencio_audio(client: httpx.AsyncClient, text: str, voice_sample: bytes,
+                                  emotion: str = "none", speaker_id: str = "260") -> bytes:
+    try:
+        uploaded = await client.post(
+            f"{SILENCIO_API}/gradio_api/upload",
+            files={"files": ("sonivox-reference.wav", voice_sample, "audio/wav")},
+            timeout=httpx.Timeout(connect=20.0, read=90.0, write=90.0, pool=20.0),
+        )
+        if uploaded.status_code != 200:
+            logger.warning("Silencio reference upload returned HTTP %s", uploaded.status_code)
+            raise HTTPException(status_code=502, detail="Silencio could not receive the selected voice sample")
+        upload_data = uploaded.json()
+        if not isinstance(upload_data, list) or not upload_data or not isinstance(upload_data[0], str):
+            raise HTTPException(status_code=502, detail="Silencio returned an invalid voice upload response")
+        reference_path = upload_data[0]
+
+        submitted = await client.post(
+            f"{SILENCIO_API}/gradio_api/call/v2/synthesize",
+            json={
+                "text": text,
+                "voice_id": speaker_id,
+                "voice_audio": {"path": reference_path, "meta": {"_type": "gradio.FileData"}},
+                "emotion": emotion,
+                "seed": 42,
+                "randomize_seed": True,
+            },
+            timeout=httpx.Timeout(connect=20.0, read=90.0, write=45.0, pool=20.0),
+        )
+        if submitted.status_code not in (200, 201):
+            logger.warning("Silencio synthesis submission returned HTTP %s", submitted.status_code)
+            raise HTTPException(status_code=502, detail="Silencio could not start speech generation")
+        event_id = submitted.json().get("event_id")
+        if not event_id:
+            raise HTTPException(status_code=502, detail="Silencio did not return a generation job ID")
+
+        events = await client.get(
+            f"{SILENCIO_API}/gradio_api/call/synthesize/{quote(str(event_id), safe='')}",
+            timeout=httpx.Timeout(connect=20.0, read=240.0, write=30.0, pool=20.0),
+        )
+        if events.status_code != 200:
+            logger.warning("Silencio result stream returned HTTP %s", events.status_code)
+            raise HTTPException(status_code=502, detail="Silencio could not return the generated speech")
+
+        event_name, data_lines, result_data = "", [], None
+        for line in events.text.splitlines() + [""]:
+            if line.startswith("event:"):
+                event_name = line[6:].strip()
+            elif line.startswith("data:"):
+                data_lines.append(line[5:].strip())
+            elif not line:
+                if event_name == "complete" and data_lines:
+                    result_data = json.loads("\n".join(data_lines))
+                    break
+                if event_name == "error":
+                    raise HTTPException(status_code=502, detail="Silencio speech generation failed")
+                event_name, data_lines = "", []
+        if not isinstance(result_data, list) or not result_data or not isinstance(result_data[0], dict):
+            raise HTTPException(status_code=502, detail="Silencio returned no valid speech audio")
+        audio_data = result_data[0]
+        audio_url, audio_path = audio_data.get("url"), audio_data.get("path")
+        if audio_url:
+            if audio_url.startswith("/"):
+                audio_url = SILENCIO_API + audio_url
+            elif not urlparse(audio_url).scheme:
+                audio_url = f"{SILENCIO_API}/{audio_url.lstrip('/')}"
+            parsed_audio_url = urlparse(audio_url)
+            if parsed_audio_url.scheme not in {"http", "https"} or parsed_audio_url.netloc != urlparse(SILENCIO_API).netloc:
+                raise HTTPException(status_code=502, detail="Silencio returned an unexpected audio host")
+        elif audio_path:
+            audio_url = f"{SILENCIO_API}/gradio_api/file={str(audio_path).lstrip('/')}"
+        else:
+            raise HTTPException(status_code=502, detail="Silencio returned no downloadable audio file")
+
+        audio_response = await client.get(
+            audio_url,
+            timeout=httpx.Timeout(connect=20.0, read=90.0, write=30.0, pool=20.0),
+        )
+        if audio_response.status_code != 200 or not audio_response.content.startswith(b"RIFF"):
+            raise HTTPException(status_code=502, detail="Silencio returned invalid WAV audio")
+        return audio_response.content
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as exc:
+        logger.warning("Silencio request timed out")
+        raise HTTPException(status_code=504, detail="Silencio speech generation timed out") from exc
+    except httpx.RequestError as exc:
+        logger.warning("Silencio connection failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Could not reach Silencio") from exc
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        logger.exception("Silencio returned an invalid response")
+        raise HTTPException(status_code=502, detail="Silencio returned an invalid response") from exc
+
+
+async def generate_speech_audio(client: httpx.AsyncClient, text: str, lang: str,
+                                voice_sample: bytes, engine: str, emotion: str,
+                                silencio_voice_id: str) -> bytes:
+    if engine == "silencio":
+        return await generate_silencio_audio(client, text, voice_sample, emotion, silencio_voice_id)
+    try:
+        response = await client.post(
+            f"{TTS_API}/v1/tts",
+            json={"text": text, "lang": lang, "format": "wav",
+                  "voice_wav_base64": base64.b64encode(voice_sample).decode("ascii")},
+        )
+        if response.status_code == 429:
+            raise HTTPException(status_code=503, detail="Africa TTS is busy. Try again shortly.")
+        response.raise_for_status()
+        if not response.content.startswith(b"RIFF"):
+            raise HTTPException(status_code=502, detail="Africa TTS returned invalid WAV audio")
+        return response.content
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="Speech generation timed out") from exc
+    except httpx.HTTPStatusError as exc:
+        logger.warning("Africa TTS returned HTTP %s", exc.response.status_code)
+        raise HTTPException(status_code=502, detail="Africa TTS could not generate this audio") from exc
+    except httpx.RequestError as exc:
+        logger.warning("Africa TTS connection failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Could not reach Africa TTS") from exc
 
 
 class SingingRequest(BaseModel):
@@ -207,9 +349,10 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
+    validate_speech_engine(data)
     if data.lang not in {"eng", "yor", "hau", "ibo", "ful"}:
         raise HTTPException(status_code=400, detail="Unsupported language")
-    timeout = httpx.Timeout(connect=15.0, read=100.0, write=45.0, pool=15.0)
+    timeout = httpx.Timeout(connect=20.0, read=260.0, write=90.0, pool=20.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         key_row, headers = await get_api_key_owner(client, raw_key)
         user_id = key_row["user_id"]
@@ -250,7 +393,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
         )
         if sample_response.status_code != 200:
             raise HTTPException(status_code=404, detail="Voice sample could not be loaded")
-        voice_b64 = base64.b64encode(sample_response.content).decode("ascii")
+        voice_sample = sample_response.content
         reservation_id = str(uuid.uuid4())
         reserve = await client.post(
             f"{SUPABASE_URL}/rest/v1/rpc/reserve_sonivox_characters_for_user",
@@ -263,15 +406,10 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
         if not reserve.json().get("allowed"):
             raise HTTPException(status_code=402, detail="Monthly free character allowance exhausted")
         try:
-            tts = await client.post(
-                f"{TTS_API}/v1/tts",
-                json={"text": text, "lang": data.lang, "format": "wav",
-                      "voice_wav_base64": voice_b64},
+            audio = await generate_speech_audio(
+                client, text, data.lang, voice_sample, data.engine,
+                data.emotion, data.silencio_voice_id,
             )
-            if tts.status_code == 429:
-                raise HTTPException(status_code=503, detail="Voice provider is busy; retry shortly")
-            tts.raise_for_status()
-            audio = tts.content
             if not audio.startswith(b"RIFF"):
                 raise HTTPException(status_code=502, detail="Voice provider returned invalid WAV audio")
             duration_ms = None
@@ -319,7 +457,8 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
                 raise HTTPException(status_code=502, detail="Could not finalize usage reservation")
             return {"id": generation_id, "audio_url": audio_url,
                     "audio_path": audio_path, "duration_ms": duration_ms,
-                    "characters_used": len(text), "preset": preset["name"] if preset else None}
+                    "characters_used": len(text), "preset": preset["name"] if preset else None,
+                    "engine": data.engine}
         except Exception:
             try:
                 await client.post(
@@ -502,10 +641,11 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
+    validate_speech_engine(data)
     if data.lang not in {"eng", "yor", "hau", "ibo", "ful"}:
         raise HTTPException(status_code=400, detail="Unsupported language")
 
-    timeout = httpx.Timeout(connect=15.0, read=100.0, write=45.0, pool=15.0)
+    timeout = httpx.Timeout(connect=20.0, read=260.0, write=90.0, pool=20.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         user = await get_authenticated_user(client, token)
         user_id = user["id"]
@@ -529,7 +669,7 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
         )
         if sample_response.status_code != 200:
             raise HTTPException(status_code=404, detail="Your voice sample could not be loaded")
-        voice_b64 = base64.b64encode(sample_response.content).decode("ascii")
+        voice_sample = sample_response.content
 
         reservation_id = str(uuid.uuid4())
         reserve_response = await client.post(
@@ -546,27 +686,10 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
 
         try:
             started = time.monotonic()
-            try:
-                tts_response = await client.post(
-                    f"{TTS_API}/v1/tts",
-                    json={"text": text, "lang": data.lang, "format": "wav",
-                          "voice_wav_base64": voice_b64},
-                )
-                if tts_response.status_code == 429:
-                    raise HTTPException(status_code=503, detail="Voice provider is busy. Try again shortly.")
-                tts_response.raise_for_status()
-            except HTTPException:
-                raise
-            except httpx.TimeoutException as exc:
-                raise HTTPException(status_code=504, detail="Speech generation timed out") from exc
-            except httpx.HTTPStatusError as exc:
-                logger.warning("TTS provider returned HTTP %s", exc.response.status_code)
-                raise HTTPException(status_code=502, detail="Voice provider could not generate this audio") from exc
-            except httpx.RequestError as exc:
-                logger.warning("TTS provider connection failed: %s", type(exc).__name__)
-                raise HTTPException(status_code=502, detail="Could not reach the voice provider") from exc
-
-            audio = tts_response.content
+            audio = await generate_speech_audio(
+                client, text, data.lang, voice_sample, data.engine,
+                data.emotion, data.silencio_voice_id,
+            )
             if not audio.startswith(b"RIFF"):
                 raise HTTPException(status_code=502, detail="Voice provider returned invalid WAV audio")
             duration_ms = None
@@ -608,7 +731,8 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
                 logger.error("Could not finalize usage reservation: HTTP %s", finish_response.status_code)
                 raise HTTPException(status_code=502, detail="Audio was created but usage could not be finalized")
             logger.info("SONIVOX generated audio in %.2fs for user %s", time.monotonic() - started, user_id)
-            return {"id": generation_id, "audio_path": audio_path, "duration_ms": duration_ms}
+            return {"id": generation_id, "audio_path": audio_path,
+                    "duration_ms": duration_ms, "engine": data.engine}
         except Exception:
             try:
                 await client.post(
