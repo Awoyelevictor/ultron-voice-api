@@ -475,6 +475,7 @@ async def generate_singing(
                 "user_id": user_id,
                 "voice_id": data.voice_id,
                 "input_text": lyrics,
+                "generation_type": "singing",
                 "status": "completed",
                 "audio_path": audio_path,
                 "duration_ms": duration_ms,
