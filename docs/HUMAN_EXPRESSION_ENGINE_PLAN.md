@@ -233,3 +233,19 @@ The Africa TTS repository states that its code is MIT-licensed but its model and
 5. Decide whether to retain Africa TTS for multilingual spoken segments and route expression events to a separate renderer, or pursue a tag-aware multilingual fine-tune with properly licensed data.
 
 **Status remains Phase 1.** No production code, model, database, environment variable, or deployment has been changed.
+
+
+### Additional dataset lead: Basis Global Emotions
+
+Silencio-2's notice identifies Basis Global Emotions as a development dataset. Its public dataset card describes 525.17 hours, 137,696 recordings, 10,420 speakers and 108 locales, including non-verbal cue examples such as sigh, breath, gasp, clear throat, yawn and cough. The dataset card states its Basis Data License permits commercial model training and commercial deployment, subject to its restrictions (including no redistribution of recordings and no speaker identification/impersonation).
+
+This is a potentially valuable licensed data source for a future multilingual expression fine-tune. It is not evidence that we already have access to the dataset or that the current Africa TTS checkpoint can be commercially fine-tuned. Dataset access is request-based, and we must preserve its license terms and the separate model-weight terms.
+
+### Revised technical recommendation
+
+Run a two-track evaluation before selecting the final route:
+
+- **Track A — Fast English proof-of-concept:** evaluate Silencio-2 on a permitted reference voice and compare its inline sound events, voice similarity, CPU latency and repeatability.
+- **Track B — Africa TTS continuity / multilingual path:** obtain provider confirmation and evaluate whether a tag-aware version can be trained or adapted while preserving supported African languages. Resolve the Africa TTS checkpoint's CC-BY-NC-4.0 model restriction before commercial use; do not assume the MIT code license covers the weights.
+
+Do not replace the production provider or merge either model into the production service during this evaluation.
