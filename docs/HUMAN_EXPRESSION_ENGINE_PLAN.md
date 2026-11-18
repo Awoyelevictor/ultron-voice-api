@@ -286,3 +286,28 @@ The current Silencio-2 model card and NOTICE identify CC-BY-4.0 weights and MIT 
 7. Do not start implementation or change production until the test results and licensing gate support a decision.
 
 **Status remains Phase 1 — provider capability verification.** This update is documentation-only. No production code, database, secrets, Render configuration, model deployment, or Singing Studio component has been changed.
+
+## 13. ULTRON voice-reference benchmark — 18 November 2026
+
+### Reference asset and intended use
+
+The user identified the previously discussed Avengers ULTRON voice-test MP3 as the preferred sound reference for the SONIVOX voice experiment:
+
+- Candidate filename: `Avengers_2_-_Ultron_Voice_Test_(mp3.pm).mp3`
+- Previously inspected properties: approximately 37.83 seconds, stereo, 44.1 kHz.
+- Previously measured voice profile: median fundamental frequency approximately 80.52 Hz, with a measured range of approximately 58.95–140.04 Hz.
+- Intended target characteristics: low chest register, controlled rasp/metallic edge, measured pacing, deliberate pauses, crisp consonants, and restrained theatrical intensity.
+
+These measurements describe the previously inspected recording; the file is not attached to this repository and was not re-analysed during this documentation update. The exact reference must be supplied again in the active test environment before waveform-level comparison.
+
+### Benchmark protocol
+
+1. Use a short, clean 5–10 second excerpt with clear speech and minimal music/effects. Retain the full original only as a listening reference.
+2. Treat the recording as a **style and acoustic target**, not as proof that any candidate can reproduce the source speaker exactly. Confirm rights and permissions before any public or commercial voice imitation or distribution.
+3. Use a user-owned or otherwise authorised test voice for voice-cloning experiments. Do not upload the movie clip as a clone identity reference unless the necessary rights and permissions are established.
+4. Compare candidate output against the target on pitch range, spectral texture/roughness, resonance, articulation, speaking rate, pause placement, and perceived similarity in a blinded listening test.
+5. Keep the evaluation offline/separate from the production gateway. Do not change the active TTS provider, voice profiles, database, Render settings, or Singing Studio.
+
+### Current status
+
+The Avengers MP3 is the chosen reference target, but the file is not currently available in the repository or this test session. No new audio has been generated, and no candidate has passed the ULTRON reference-match test. The next evidence-gathering step is to obtain the authorised short reference excerpt and run the same fixed speech prompt through the shortlisted engines.
