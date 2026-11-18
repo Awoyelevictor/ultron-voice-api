@@ -180,3 +180,8 @@
 #page-singing .page-heading {
   margin-bottom: 28px;
 }
+
+
+/* Silencio-specific speech controls */
+.silencio-options{margin:14px 0 18px;align-items:start}
+.silencio-options .microcopy{grid-column:1/-1;margin-top:-3px}

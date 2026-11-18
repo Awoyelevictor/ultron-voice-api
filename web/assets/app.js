@@ -265,9 +265,12 @@ function syncSpeechEngineOptions() {
     option.disabled = silencioSelected && option.value !== "eng";
   });
   if (silencioSelected && languageSelect.value !== "eng") languageSelect.value = "eng";
+
   document.getElementById("engine-hint").textContent = silencioSelected
     ? "English only. Your selected voice sample is sent to the Silencio Hugging Face Space for processing."
     : "Africa TTS supports English, Yoruba, Hausa, Igbo and Fulfulde.";
+
+  document.getElementById("silencio-options").classList.toggle("hidden", !silencioSelected);
 }
 engineSelect.addEventListener("change", syncSpeechEngineOptions);
 syncSpeechEngineOptions();
@@ -290,7 +293,14 @@ document.getElementById("generate-button").addEventListener("click", async () =>
     const response = await fetch("/api/speech",{
       method:"POST",
       headers:{"Content-Type":"application/json","Authorization":"Bearer " + session.access_token},
-      body:JSON.stringify({text,voice_id:voiceId,lang,engine})
+      body:JSON.stringify({
+        text,
+        voice_id:voiceId,
+        lang,
+        engine,
+        emotion:engine === "silencio" ? document.getElementById("silencio-emotion").value : "none",
+        silencio_voice_id:engine === "silencio" ? document.getElementById("silencio-speaker").value : "260"
+      })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.detail || "Speech generation failed");

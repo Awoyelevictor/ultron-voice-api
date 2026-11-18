@@ -48,6 +48,35 @@
             <textarea id="speech-text" maxlength="1000" placeholder="Type or paste something you want to hear…"></textarea>
             <div class="field-row"><div class="field-group"><label class="field-label" for="voice-select">VOICE</label><select id="voice-select"><option value="">Add a voice profile first</option></select></div><div class="field-group"><label class="field-label" for="language-select">LANGUAGE</label><select id="language-select"><option value="eng">English</option><option value="yor">Yoruba</option><option value="hau">Hausa</option><option value="ibo">Igbo</option><option value="ful">Fulfulde</option></select></div></div>
             <div class="field-group engine-field"><label class="field-label" for="engine-select">SPEECH ENGINE</label><select id="engine-select"><option value="africa">Africa TTS · African languages</option><option value="silencio">Silencio-2 · English voice cloning</option></select><p class="microcopy" id="engine-hint">Africa TTS supports English, Yoruba, Hausa, Igbo and Fulfulde.</p></div>
+            <div id="silencio-options" class="field-row silencio-options hidden">
+              <div class="field-group">
+                <label class="field-label" for="silencio-emotion">VOICE EMOTION</label>
+                <select id="silencio-emotion">
+                  <option value="none">Neutral</option>
+                  <option value="happy">Happy</option>
+                  <option value="sad">Sad</option>
+                  <option value="angry">Angry</option>
+                  <option value="fear">Fear</option>
+                  <option value="surprised">Surprised</option>
+                  <option value="whisper">Whisper</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label class="field-label" for="silencio-speaker">SPEAKER PRESET</label>
+                <select id="silencio-speaker">
+                  <option value="260">260 · Default</option>
+                  <option value="1320">1320</option>
+                  <option value="2094">2094</option>
+                  <option value="3575">3575</option>
+                  <option value="5639">5639</option>
+                  <option value="6930">6930</option>
+                  <option value="7127">7127</option>
+                  <option value="7729">7729</option>
+                </select>
+              </div>
+              <p class="microcopy">The uploaded voice sample is used as the reference. The speaker preset is a separate Silencio model setting.</p>
+            </div>
+
             <button class="primary-button full-button" id="generate-button" disabled><span>✦</span> Generate speech <span class="button-arrow">→</span></button>
             <p class="microcopy">Only use voice samples you own or are explicitly authorized to use.</p>
           </section>
