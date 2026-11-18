@@ -5,7 +5,8 @@ let toastTimer;
 let supabase;
 let currentSession;
 let voices = [];
-let audioUrl;
+let speechAudioUrl;
+let singingAudioUrl;
 
 function notify(message) {
   toast.textContent = message;
@@ -43,6 +44,8 @@ async function enterWorkspace() {
   document.getElementById("create-key-button").disabled = false;
   await loadVoices();
   await loadStats();
+  await loadSpeechHistory();
+  await loadSingingHistory();
   await loadUsage();
   await loadApiKeys();
 }
@@ -124,13 +127,72 @@ async function loadUsage() {
 }
 async function loadStats() {
   const {count:voiceCount} = await supabase.from("sonivox_voices").select("id",{count:"exact",head:true});
-  const {count:generationCount} = await supabase.from("sonivox_generations").select("id",{count:"exact",head:true});
-  const {data:generations} = await supabase.from("sonivox_generations").select("input_text").limit(1000);
+  const {count:generationCount} = await supabase.from("sonivox_generations")
+    .select("id",{count:"exact",head:true}).eq("generation_type","speech");
+  const {data:generations} = await supabase.from("sonivox_generations")
+    .select("input_text").eq("generation_type","speech").limit(1000);
   const characters = (generations || []).reduce((sum,item) => sum + (item.input_text || "").length,0);
   const values = document.querySelectorAll(".stat-value");
   values[0].textContent = voiceCount ?? 0;
   values[1].textContent = generationCount ?? 0;
   values[2].textContent = characters.toLocaleString();
+}
+
+async function loadGenerationHistory(type, containerId, emptyMessage) {
+  const container = document.getElementById(containerId);
+  if (!container || !supabase) return;
+  container.innerHTML = '<p class="history-empty">Loading recent generations…</p>';
+  const {data,error} = await supabase.from("sonivox_generations")
+    .select("id,input_text,status,audio_path,duration_ms,created_at")
+    .eq("generation_type",type)
+    .order("created_at",{ascending:false})
+    .limit(8);
+  if (error) {
+    console.error("SONIVOX history query failed:", error);
+    container.innerHTML = '<p class="history-empty">History could not be loaded.</p>';
+    return;
+  }
+  container.innerHTML = "";
+  if (!data || !data.length) {
+    const empty = document.createElement("p");
+    empty.className = "history-empty";
+    empty.textContent = emptyMessage;
+    container.append(empty);
+    return;
+  }
+  for (const item of data) {
+    const card = document.createElement("article");
+    card.className = "history-item";
+    const copy = document.createElement("div");
+    copy.className = "history-copy";
+    const title = document.createElement("strong");
+    const sourceText = (item.input_text || "").replace(/\s+/g," ").trim();
+    title.textContent = sourceText.length > 90 ? sourceText.slice(0,87) + "…" : sourceText;
+    const meta = document.createElement("small");
+    meta.textContent = new Date(item.created_at).toLocaleString() + " · " + (item.status || "unknown");
+    copy.append(title,meta);
+    card.append(copy);
+    if (item.status === "completed" && item.audio_path) {
+      const {data:signed,error:signedError} = await supabase.storage
+        .from("sonivox-voices").createSignedUrl(item.audio_path,3600);
+      if (!signedError && signed && signed.signedUrl) {
+        const player = document.createElement("audio");
+        player.controls = true;
+        player.preload = "none";
+        player.src = signed.signedUrl;
+        player.className = "history-player";
+        card.append(player);
+      }
+    }
+    container.append(card);
+  }
+}
+
+async function loadSpeechHistory() {
+  return loadGenerationHistory("speech","speech-history","No speech generations yet.");
+}
+async function loadSingingHistory() {
+  return loadGenerationHistory("singing","singing-history","No singing performances yet.");
 }
 const fileInput = document.createElement("input");
 fileInput.type = "file";
@@ -280,24 +342,25 @@ document.getElementById("generate-button").addEventListener("click", async () =>
     if (!response.ok) throw new Error(result.detail || "Speech generation failed");
     const {data:audioData,error} = await supabase.storage.from("sonivox-voices").download(result.audio_path);
     if (error) throw error;
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-    audioUrl = URL.createObjectURL(audioData);
-    const output = document.querySelector(".empty-audio");
+    if (speechAudioUrl) URL.revokeObjectURL(speechAudioUrl);
+    speechAudioUrl = URL.createObjectURL(audioData);
+    const output = document.querySelector("#page-dashboard .empty-audio");
     output.innerHTML = "";
     const heading = document.createElement("strong");
     heading.textContent = "Your speech is ready";
     const player = document.createElement("audio");
     player.controls = true;
-    player.src = audioUrl;
+    player.src = speechAudioUrl;
     player.className = "audio-player";
     const download = document.createElement("a");
-    download.href = audioUrl;
+    download.href = speechAudioUrl;
     download.download = "sonivox-" + result.id + ".wav";
     download.className = "secondary-button";
     download.textContent = "Download WAV ↓";
     output.append(heading,player,download);
     notify("Speech generated successfully.");
     await loadStats();
+    await loadSpeechHistory();
     await loadUsage();
   } catch (error) {
     notify(error.message || "Speech generation failed.");
@@ -351,24 +414,24 @@ document.getElementById("singing-generate-button").addEventListener("click", asy
       .from("sonivox-voices").download(result.audio_path);
     if (error) throw error;
 
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-    audioUrl = URL.createObjectURL(audioData);
+    if (singingAudioUrl) URL.revokeObjectURL(singingAudioUrl);
+    singingAudioUrl = URL.createObjectURL(audioData);
 
     output.innerHTML = "";
     const heading = document.createElement("strong");
     heading.textContent = "Your singing is ready";
     const player = document.createElement("audio");
     player.controls = true;
-    player.src = audioUrl;
+    player.src = singingAudioUrl;
     player.className = "audio-player";
     const download = document.createElement("a");
-    download.href = audioUrl;
+    download.href = singingAudioUrl;
     download.download = "sonivox-singing-" + result.id + ".wav";
     download.className = "secondary-button";
     download.textContent = "Download vocals ↓";
     output.append(heading, player, download);
     notify("Singing performance generated.");
-    await loadStats();
+    await loadSingingHistory();
   } catch (error) {
     output.innerHTML = "<strong>Generation could not be completed</strong><p></p>";
     output.querySelector("p").textContent = error.message || "Please try again.";
