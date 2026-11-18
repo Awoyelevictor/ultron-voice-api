@@ -9,7 +9,7 @@ import time
 import tempfile
 import uuid
 import wave
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
@@ -96,7 +96,7 @@ async def generate_silencio_audio(client: httpx.AsyncClient, text: str, voice_sa
             raise HTTPException(status_code=502, detail="Silencio did not return a generation job ID")
 
         events = await client.get(
-            f"{SILENCIO_API}/gradio_api/call/synthesize/{event_id}",
+            f"{SILENCIO_API}/gradio_api/call/synthesize/{quote(str(event_id), safe='')}",
             timeout=httpx.Timeout(connect=20.0, read=240.0, write=30.0, pool=20.0),
         )
         if events.status_code != 200:
@@ -123,6 +123,11 @@ async def generate_silencio_audio(client: httpx.AsyncClient, text: str, voice_sa
         if audio_url:
             if audio_url.startswith("/"):
                 audio_url = SILENCIO_API + audio_url
+            elif not urlparse(audio_url).scheme:
+                audio_url = f"{SILENCIO_API}/{audio_url.lstrip('/')}"
+            parsed_audio_url = urlparse(audio_url)
+            if parsed_audio_url.scheme not in {"http", "https"} or parsed_audio_url.netloc != urlparse(SILENCIO_API).netloc:
+                raise HTTPException(status_code=502, detail="Silencio returned an unexpected audio host")
         elif audio_path:
             audio_url = f"{SILENCIO_API}/gradio_api/file={str(audio_path).lstrip('/')}"
         else:
@@ -143,7 +148,7 @@ async def generate_silencio_audio(client: httpx.AsyncClient, text: str, voice_sa
     except httpx.RequestError as exc:
         logger.warning("Silencio connection failed: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Could not reach Silencio") from exc
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
         logger.exception("Silencio returned an invalid response")
         raise HTTPException(status_code=502, detail="Silencio returned an invalid response") from exc
 
