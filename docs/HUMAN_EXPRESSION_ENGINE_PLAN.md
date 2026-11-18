@@ -195,3 +195,41 @@ Score intelligibility, naturalness, voice similarity, event correctness, timing,
 5. Implement the parser independently before connecting any new model.
 
 **Current status:** repository audit completed at the gateway level; upstream expressive capabilities remain unverified. No production code, database schema, environment variables, or deployment settings have been changed by this planning work.
+
+
+## 11. Phase 1 research update — 18 November 2026
+
+### Confirmed architecture relationship
+
+The public Africa TTS project states that it is built on Kyutai Pocket TTS, supports voice cloning from a short 3–10 second clip, and exposes text-generation APIs. Its public documentation does not list inline vocal-event tags or native cough/sigh/hum controls. This is consistent with the production gateway audit: the current API forwards text and a voice reference to the provider, but there is no documented expression-control field in the gateway contract.
+
+### Strong research lead: Silencio-2
+
+Silencio-2 is a Pocket TTS fine-tune that explicitly supports positional inline sound tags including `[laugh]`, `[sigh]`, `[gasp]`, `[cough]`, and `[clear_throat]`; it also supports short-reference voice cloning. Its model card reports English-only support and notes that tag strength varies between takes. It was trained by extending the Pocket TTS tokenizer/text table and fine-tuning on a custom dataset.
+
+This is a promising proof-of-concept for SVEM, but it is **not a drop-in replacement for Africa TTS**:
+- Silencio-2 is documented as English-only, while Africa TTS targets 92 African languages plus English.
+- Both are in the Pocket TTS family, but shared ancestry does not prove tokenizer, checkpoint, phonemizer, language-front-end, or voice-embedding compatibility.
+- We must test the same consenting reference voice, command positions, and target languages before selecting it.
+- The public model card says the output can vary from take to take; important outputs require listening evaluation.
+
+### Licensing gate
+
+The Africa TTS repository states that its code is MIT-licensed but its model and default voices are CC-BY-NC-4.0. The Silencio-2 model card states CC-BY-4.0 for its weights and MIT for its adapted inference code. Before using either model or adapting weights in a commercial SONIVOX deployment, verify the complete license notices, upstream/base-model terms, training-data permissions, and any applicable restrictions. Do not assume the code license grants commercial rights to model weights or voice assets. Obtain qualified legal review if needed.
+
+### Phase 1 preliminary conclusion
+
+- **Africa TTS native inline expression support:** not documented; treat as unsupported until an endpoint test or provider confirmation proves otherwise.
+- **Hybrid rendering around Africa TTS:** technically viable in principle; requires quality testing for voice match, timing, language coverage, and operating cost.
+- **Pocket TTS-family expressive model:** Silencio-2 is a concrete research candidate for English proof-of-concept, not yet approved for production or multilingual use.
+- **Commercial deployment:** model/voice licensing is a release gate, not an afterthought.
+
+### Next verification tasks
+
+1. Ask the Africa TTS provider/maintainer whether the deployed Modal endpoint supports any hidden or experimental event tokens and whether a tag-aware checkpoint exists.
+2. Verify the exact production endpoint's package/model version and request schema; compare it with the public Africa TTS server implementation.
+3. Run a controlled Silencio-2 test using a voice sample with permission and the same event prompts, then evaluate identity consistency and event realism.
+4. Check license notices and upstream dependencies before any production adoption.
+5. Decide whether to retain Africa TTS for multilingual spoken segments and route expression events to a separate renderer, or pursue a tag-aware multilingual fine-tune with properly licensed data.
+
+**Status remains Phase 1.** No production code, model, database, environment variable, or deployment has been changed.
