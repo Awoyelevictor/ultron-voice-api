@@ -15,11 +15,11 @@ function notify(message) {
 }
 function showPage(page) {
   if (page === "home") page = "dashboard";
-  ["dashboard", "voices", "keys"].forEach(name => {
+  ["dashboard", "voices", "singing", "keys"].forEach(name => {
     document.getElementById("page-" + name).classList.toggle("hidden", name !== page);
   });
   document.querySelectorAll(".nav-link").forEach(link => link.classList.toggle("active", link.dataset.page === page));
-  document.getElementById("crumb").textContent = ({dashboard:"Overview",voices:"My voices",keys:"API keys"})[page];
+  document.getElementById("crumb").textContent = ({dashboard:"Overview",voices:"My voices",singing:"Singing Studio",keys:"API keys"})[page];
   document.getElementById("sidebar").classList.remove("open");
   window.scrollTo({top:0,behavior:"smooth"});
 }
@@ -55,6 +55,15 @@ async function loadVoices() {
   const {data,error} = await supabase.from("sonivox_voices").select("id,name,sample_path,created_at").order("created_at",{ascending:false});
   if (error) return notify("Could not load your voices: " + error.message);
   voices = data || [];
+  const singingSelect = document.getElementById("singing-voice-select");
+  singingSelect.innerHTML = "";
+  if (!voices.length) {
+    singingSelect.add(new Option("Add a voice profile first", ""));
+  } else {
+    voices.forEach(voice => singingSelect.add(new Option(voice.name, voice.id)));
+  }
+  document.getElementById("singing-generate-button").disabled = !voices.length;
+
   const select = document.getElementById("voice-select");
   select.innerHTML = "";
   if (!voices.length) {
@@ -297,6 +306,79 @@ document.getElementById("generate-button").addEventListener("click", async () =>
     await loadUsage();
   }
 });
+document.getElementById("singing-lyrics").addEventListener("input", event => {
+  document.getElementById("singing-char-count").textContent =
+    event.target.value.length + " / 3,000";
+});
+
+document.getElementById("singing-generate-button").addEventListener("click", async () => {
+  const lyrics = document.getElementById("singing-lyrics").value.trim();
+  const voiceId = document.getElementById("singing-voice-select").value;
+  const style = document.getElementById("singing-style").value;
+  const customStyle = document.getElementById("singing-direction").value.trim();
+
+  if (!lyrics) return notify("Write your lyrics first.");
+  if (!voiceId) return notify("Add and select a saved voice first.");
+
+  const button = document.getElementById("singing-generate-button");
+  const output = document.getElementById("singing-output");
+  button.disabled = true;
+  button.textContent = "Creating your vocals…";
+  output.innerHTML = "<strong>Generating your singing performance…</strong><p>This may take a few minutes. Keep this page open.</p>";
+
+  try {
+    const {data:{session}} = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error("Your session expired. Sign in again.");
+
+    const response = await fetch("/api/singing", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + session.access_token
+      },
+      body: JSON.stringify({
+        lyrics,
+        voice_id: voiceId,
+        style,
+        custom_style: customStyle
+      })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || "Singing generation failed.");
+
+    const {data:audioData,error} = await supabase.storage
+      .from("sonivox-voices").download(result.audio_path);
+    if (error) throw error;
+
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    audioUrl = URL.createObjectURL(audioData);
+
+    output.innerHTML = "";
+    const heading = document.createElement("strong");
+    heading.textContent = "Your singing is ready";
+    const player = document.createElement("audio");
+    player.controls = true;
+    player.src = audioUrl;
+    player.className = "audio-player";
+    const download = document.createElement("a");
+    download.href = audioUrl;
+    download.download = "sonivox-singing-" + result.id + ".wav";
+    download.className = "secondary-button";
+    download.textContent = "Download vocals ↓";
+    output.append(heading, player, download);
+    notify("Singing performance generated.");
+    await loadStats();
+  } catch (error) {
+    output.innerHTML = "<strong>Generation could not be completed</strong><p></p>";
+    output.querySelector("p").textContent = error.message || "Please try again.";
+    notify(error.message || "Singing generation failed.");
+  } finally {
+    button.disabled = !voices.length;
+    button.innerHTML = '✦ Generate singing <span class="button-arrow">→</span>';
+  }
+});
+
 async function sha256Hex(value) {
   const bytes = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest("SHA-256", bytes);

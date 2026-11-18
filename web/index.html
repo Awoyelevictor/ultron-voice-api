@@ -20,6 +20,7 @@
       <nav class="nav">
         <button class="nav-link active" data-page="dashboard"><span class="nav-icon">◫</span>Overview</button>
         <button class="nav-link" data-page="voices"><span class="nav-icon">◉</span>My voices</button>
+        <button class="nav-link" data-page="singing"><span class="nav-icon">♫</span>Singing Studio</button>
         <button class="nav-link" data-page="keys"><span class="nav-icon">⌘</span>API keys</button>
       </nav>
       <div class="sidebar-bottom">
@@ -75,6 +76,57 @@
         <div class="panel upload-panel"><div class="upload-art"><div class="upload-wave">∿</div></div><div class="upload-copy"><div class="eyebrow">BUILD YOUR LIBRARY</div><h2>Bring a voice to life.</h2><p>Upload an audio sample to create a reusable voice profile. Common formats like WAV, MP3, M4A, AAC, OGG, FLAC and OPUS are converted automatically. Only upload a voice you own or have explicit permission to use.</p><div class="upload-specs"><span>Multiple audio formats</span><span>Private storage</span><span>Consent required</span></div><button class="secondary-button" id="upload-info-button">How it works <span>→</span></button></div></div>
         <div class="section-title-row"><div><h2>Saved voices</h2><p>Your private voice collection</p></div><span class="soft-tag">0 VOICES</span></div>
         <div class="empty-library"><div class="empty-icon">◉</div><strong>No voices added yet</strong><p>Your saved voice profiles will show up here.</p><button class="text-button" id="empty-add-button">Add your first voice →</button></div>
+      </section>
+      <section class="page hidden" id="page-singing">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">SONIVOX VOCAL LAB</div>
+            <h1>Singing <span>Studio.</span></h1>
+            <p class="subheading">Turn your lyrics into a solo vocal performance.</p>
+          </div>
+          <span class="soft-tag">AI SINGING</span>
+        </div>
+        <div class="studio-layout">
+          <section class="panel composer">
+            <div class="panel-heading">
+              <div><div class="eyebrow">VOCAL CREATION</div><h2>Create a song</h2></div>
+              <span class="soft-tag">VOICE ONLY</span>
+            </div>
+            <label class="field-label" for="singing-voice-select">REFERENCE VOICE</label>
+            <select id="singing-voice-select"><option value="">Loading saved voices…</option></select>
+            <label class="field-label" for="singing-lyrics">YOUR LYRICS <span id="singing-char-count">0 / 3,000</span></label>
+            <textarea id="singing-lyrics" maxlength="3000" placeholder="Write the lyrics you want the voice to sing…"></textarea>
+            <div class="field-group">
+              <label class="field-label" for="singing-style">VOCAL STYLE</label>
+              <select id="singing-style">
+                <option>Natural and emotional</option>
+                <option>Smooth R&amp;B</option>
+                <option>Gospel solo</option>
+                <option>Afrobeats vocal style</option>
+                <option>Soft pop</option>
+                <option>Soulful ballad</option>
+              </select>
+            </div>
+            <label class="field-label" for="singing-direction">CUSTOM DIRECTION (OPTIONAL)</label>
+            <input id="singing-direction" type="text" maxlength="500" placeholder="e.g. Calm, warm, expressive and melodic">
+            <button class="primary-button full-button" id="singing-generate-button" disabled>
+              ✦ Generate singing <span class="button-arrow">→</span>
+            </button>
+            <p class="microcopy">Uses your saved voice recording. Only use voices you own or have permission to use. Singing generation does not use your speech character allowance.</p>
+          </section>
+          <aside class="panel output-panel">
+            <div class="panel-heading">
+              <div><div class="eyebrow">VOCAL OUTPUT</div><h2>Your performance</h2></div>
+              <span class="output-icon">♫</span>
+            </div>
+            <div class="empty-audio" id="singing-output">
+              <div class="audio-orb"><span>♫</span></div>
+              <strong>Your vocals will appear here</strong>
+              <p>Generate a performance to listen to and download your WAV file.</p>
+            </div>
+            <div class="output-footer"><span>WAV AUDIO</span><span>SOLO VOCALS</span></div>
+          </aside>
+        </div>
       </section>
       <section class="page hidden" id="page-keys">
         <div class="page-heading"><div><div class="eyebrow">DEVELOPER ACCESS</div><h1>API <span>keys.</span></h1><p class="subheading">Connect SONIVOX to the apps and workflows you build.</p></div><button class="primary-button" id="create-key-button" disabled>＋ Create API key</button></div>

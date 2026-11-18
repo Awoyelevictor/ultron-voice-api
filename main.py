@@ -5,6 +5,7 @@ import hashlib
 import logging
 import os
 import time
+import tempfile
 import uuid
 import wave
 from urllib.parse import quote
@@ -29,12 +30,21 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
 VOICE_BUCKET = "sonivox-voices"
+HF_TOKEN = os.getenv("HF_TOKEN", "").strip()
+SINGING_SPACE = "phoenix1406/sonivox-vocal-studio"
 
 
 class SpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
     voice_id: str | None = None
     lang: str = "eng"
+
+
+class SingingRequest(BaseModel):
+    lyrics: str = Field(min_length=1, max_length=3000)
+    voice_id: str
+    style: str = "Natural and emotional"
+    custom_style: str = Field(default="", max_length=500)
 
 
 class LegacySpeechRequest(BaseModel):
@@ -321,6 +331,165 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
                 logger.exception("Could not refund failed developer API reservation")
             raise
 
+
+
+
+def run_singing_model(reference_bytes, lyrics, style, custom_style):
+    from gradio_client import Client, handle_file
+
+    with tempfile.TemporaryDirectory(prefix="sonivox-singing-") as folder:
+        reference_path = os.path.join(folder, "reference.wav")
+        with open(reference_path, "wb") as f:
+            f.write(reference_bytes)
+
+        client = Client(SINGING_SPACE, hf_token=HF_TOKEN)
+        result = client.predict(
+            reference=handle_file(reference_path),
+            lyrics=lyrics,
+            style=style,
+            custom_style=custom_style,
+            api_name="/generate_song",
+        )
+
+        if isinstance(result, (list, tuple)):
+            result = result[0] if result else None
+        if isinstance(result, dict):
+            result = result.get("path") or result.get("name")
+
+        if not isinstance(result, str) or not os.path.isfile(result):
+            raise RuntimeError("Singing model returned no audio file.")
+
+        with open(result, "rb") as f:
+            audio = f.read()
+
+        if not audio.startswith(b"RIFF"):
+            raise RuntimeError("Singing model did not return a WAV file.")
+
+        return audio
+
+
+@app.post("/api/singing")
+async def generate_singing(
+    data: SingingRequest,
+    authorization: str = Header(default="")
+):
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Sign in first.")
+    if not HF_TOKEN:
+        raise HTTPException(status_code=503, detail="Singing Studio is not configured.")
+
+    token = authorization.split(" ", 1)[1].strip()
+    lyrics = data.lyrics.strip()
+    if not lyrics:
+        raise HTTPException(status_code=400, detail="Enter your lyrics.")
+
+    allowed_styles = {
+        "Natural and emotional", "Smooth R&B", "Gospel solo",
+        "Afrobeats vocal style", "Soft pop", "Soulful ballad",
+    }
+    if data.style not in allowed_styles:
+        raise HTTPException(status_code=400, detail="Unsupported vocal style.")
+
+    timeout = httpx.Timeout(connect=20, read=240, write=60, pool=20)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        user = await get_authenticated_user(client, token)
+        user_id = user["id"]
+
+        voice_response = await client.get(
+            f"{SUPABASE_URL}/rest/v1/sonivox_voices",
+            params={
+                "id": f"eq.{data.voice_id}",
+                "user_id": f"eq.{user_id}",
+                "select": "id,name,sample_path",
+                "limit": "1",
+            },
+            headers=supabase_headers(token),
+        )
+        if voice_response.status_code != 200:
+            raise HTTPException(status_code=502, detail="Could not load voice profile.")
+
+        voices = voice_response.json()
+        if not voices:
+            raise HTTPException(status_code=404, detail="Voice profile not found.")
+
+        sample_path = voices[0]["sample_path"]
+        if not sample_path.startswith(f"{user_id}/") or ".." in sample_path.split("/"):
+            raise HTTPException(status_code=403, detail="Invalid voice sample path.")
+
+        sample = await client.get(
+            f"{SUPABASE_URL}/storage/v1/object/authenticated/"
+            f"{VOICE_BUCKET}/{quote(sample_path, safe='/')}",
+            headers=supabase_headers(token),
+        )
+        if sample.status_code != 200:
+            raise HTTPException(status_code=404, detail="Could not load voice recording.")
+
+        try:
+            audio = await asyncio.to_thread(
+                run_singing_model,
+                sample.content,
+                lyrics,
+                data.style,
+                data.custom_style.strip(),
+            )
+        except Exception as exc:
+            logger.exception("Singing generation failed")
+            raise HTTPException(
+                status_code=502,
+                detail="Singing generation failed. Check the Hugging Face Space.",
+            ) from exc
+
+        duration_ms = None
+        try:
+            with wave.open(io.BytesIO(audio), "rb") as wav:
+                duration_ms = int(wav.getnframes() / wav.getframerate() * 1000)
+        except (wave.Error, ZeroDivisionError):
+            pass
+
+        generation_id = str(uuid.uuid4())
+        audio_path = f"{user_id}/generations/{generation_id}.wav"
+
+        upload = await client.post(
+            f"{SUPABASE_URL}/storage/v1/object/"
+            f"{VOICE_BUCKET}/{quote(audio_path, safe='/')}",
+            headers={
+                **supabase_headers(token),
+                "Content-Type": "audio/wav",
+                "x-upsert": "false",
+            },
+            content=audio,
+        )
+        if upload.status_code not in (200, 201):
+            raise HTTPException(status_code=502, detail="Could not save generated vocals.")
+
+        history = await client.post(
+            f"{SUPABASE_URL}/rest/v1/sonivox_generations",
+            headers={
+                **supabase_headers(token),
+                "Content-Type": "application/json",
+                "Prefer": "return=representation",
+            },
+            json={
+                "id": generation_id,
+                "user_id": user_id,
+                "voice_id": data.voice_id,
+                "input_text": lyrics,
+                "status": "completed",
+                "audio_path": audio_path,
+                "duration_ms": duration_ms,
+            },
+        )
+        if history.status_code not in (200, 201):
+            logger.error("Singing history insert failed: HTTP %s", history.status_code)
+            raise HTTPException(status_code=502, detail="Vocals saved, but history failed.")
+
+        return {
+            "id": generation_id,
+            "audio_path": audio_path,
+            "duration_ms": duration_ms,
+            "type": "singing",
+        }
 
 @app.post("/api/speech")
 async def generate_speech(data: SpeechRequest, authorization: str = Header(default="")):
