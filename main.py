@@ -342,7 +342,7 @@ def run_singing_model(reference_bytes, lyrics, style, custom_style):
         with open(reference_path, "wb") as f:
             f.write(reference_bytes)
 
-        client = Client(SINGING_SPACE, hf_token=HF_TOKEN)
+        client = Client(SINGING_SPACE, token=HF_TOKEN, verbose=False, analytics_enabled=False)
         result = client.predict(
             reference=handle_file(reference_path),
             lyrics=lyrics,
