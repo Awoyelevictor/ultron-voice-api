@@ -311,3 +311,28 @@ These measurements describe the previously inspected recording; the file is not 
 ### Current status
 
 The Avengers MP3 is the chosen reference target, but the file is not currently available in the repository or this test session. No new audio has been generated, and no candidate has passed the ULTRON reference-match test. The next evidence-gathering step is to obtain the authorised short reference excerpt and run the same fixed speech prompt through the shortlisted engines.
+
+## 14. Additional expressive TTS candidate — Chatterbox-Turbo
+
+A further candidate was found during the 18 November 2026 review:
+
+- **Model:** `ResembleAI/chatterbox-turbo`
+- **Model card:** https://huggingface.co/ResembleAI/chatterbox-turbo
+- **Official demo:** https://huggingface.co/spaces/ResembleAI/chatterbox-turbo-demo
+- **Published architecture:** 350M parameters, English, MIT model-card license.
+- **Reference voice:** the documented Turbo example requires an approximately 10-second reference clip via `audio_prompt_path`.
+- **Inline paralinguistic tags:** the model card explicitly lists native tags such as `[cough]`, `[laugh]`, and `[chuckle]`; a quantized community build documents further tags including `[sigh]`, `[gasp]`, `[groan]`, and `[clear throat]`. Verify each tag against the official Turbo checkpoint before including it in SVEM.
+- **Compute:** the official example loads on CUDA; do not assume it can run on the user's phone or a CPU-only Render instance. The official Hugging Face demo is listed as running on ZeroGPU, so it is a possible hosted test route when capacity is available.
+- **Watermark:** the model card states generated audio carries Resemble AI's Perth watermark.
+
+### Candidate assessment
+
+Chatterbox-Turbo is now a high-priority comparison candidate because its documented official path combines reference-audio voice conditioning and native inline non-speech tags in one generation pass. This directly addresses the main architectural weakness identified in the Silencio-2 investigation.
+
+However, its official model card lists Turbo as English-only. The separate Chatterbox-Multilingual model supports 23+ languages and zero-shot cloning, but the model card does not establish that Turbo's paralinguistic tags are supported by that multilingual checkpoint. Do not transfer capability claims between model variants.
+
+### Next test
+
+When the authorised short reference excerpt is available, test the official Turbo demo with a short fixed sentence and one documented tag. Compare the result against Silencio-2 using the same prompt and reference excerpt. Record whether the demo accepts the reference file, whether the tag is rendered at the correct position, voice similarity, intelligibility, latency, and watermark presence. No test has been run yet and no audio result is claimed.
+
+**Decision remains pending:** Chatterbox-Turbo is a stronger architecture candidate on paper, not yet a selected or production-approved provider.
