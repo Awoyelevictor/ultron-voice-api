@@ -336,3 +336,30 @@ However, its official model card lists Turbo as English-only. The separate Chatt
 When the authorised short reference excerpt is available, test the official Turbo demo with a short fixed sentence and one documented tag. Compare the result against Silencio-2 using the same prompt and reference excerpt. Record whether the demo accepts the reference file, whether the tag is rendered at the correct position, voice similarity, intelligibility, latency, and watermark presence. No test has been run yet and no audio result is claimed.
 
 **Decision remains pending:** Chatterbox-Turbo is a stronger architecture candidate on paper, not yet a selected or production-approved provider.
+
+## 15. Hosted inference attempts and CPU deployment lead — 18 November 2026
+
+### Chatterbox-Turbo hosted test
+
+The official `ResembleAI/chatterbox-turbo-demo` interface was inspected. It accepts a text prompt, reference-audio path, seed, sampling controls, and loudness normalization. A controlled test prompt was prepared:
+
+`I see. [chuckle] Interesting. [cough] Now, let us proceed.`
+
+The hosted invocation could not run because Hugging Face reported that the account's free ZeroGPU quota was exhausted (0 seconds remaining). No waveform was returned, so there is no listening result and no claim that the tags worked in generated audio.
+
+### Chatterbox-Nano lead
+
+The official `ResembleAI/chatterbox-nano` model repository is tagged for English TTS and voice cloning and is MIT-licensed. Resemble AI's current project documentation describes Nano as a 110M-parameter CPU-oriented model with native paralinguistic tags and a stated 3x-real-time target on 8 CPU cores. This makes Nano a potentially better deployment fit than Turbo for CPU-only infrastructure, but its exact reference-audio quality, tag coverage, and performance on the intended Render instance still require measurement.
+
+The official `ResembleAI/chatterbox-nano-demo` interface was inspected and accepts a reference-audio path and text. Its hosted test was also blocked by exhausted free ZeroGPU quota (0 seconds remaining). No waveform was returned.
+
+### Updated test status and decision
+
+- Turbo interface/schema: inspected; generation blocked by free hosted compute quota.
+- Nano interface/schema: inspected; generation blocked by free hosted compute quota.
+- Silencio-2: previously inspected; generation blocked by free hosted compute quota.
+- No candidate has yet been heard against the chosen ULTRON acoustic target.
+- The original Avengers reference MP3 is not present in this repository or the active inference session. Use only a short excerpt for acoustic analysis where rights permit; use a user-owned/authorised voice reference for voice-cloning tests.
+- Do not purchase compute, enable a paid subscription, change production routing, or deploy a model without explicit approval.
+
+**Next actionable path:** obtain the authorised short voice reference, then run inference on an available compute route (for example, a user-controlled Colab GPU or an approved hosted inference service) and preserve the outputs for side-by-side listening. Keep production unchanged until that evaluation is complete.
