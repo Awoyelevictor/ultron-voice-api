@@ -28,7 +28,6 @@ document.getElementById("menu-toggle").addEventListener("click", () => document.
 
 async function enterWorkspace() {
   document.getElementById("auth-gate")?.remove();
-  document.getElementById("app").classList.remove("app-locked");
   const email = currentSession?.user?.email || "Signed in";
   document.querySelector(".profile-copy strong").textContent = email;
   document.querySelector(".profile-copy small").textContent = "Personal workspace";
@@ -46,6 +45,7 @@ async function enterWorkspace() {
   await loadSpeechHistory();
   await loadUsage();
   await loadApiKeys();
+  document.getElementById("workspace-loader")?.remove();
 }
 function lockWorkspace() {
   currentSession = null;
@@ -513,7 +513,6 @@ async function createApiKey() {
 document.getElementById("create-key-button").onclick = createApiKey;
 document.querySelector(".help-button").onclick = () => notify("Need help? Upload a WAV voice sample, select it, type a script, and generate.");
 async function init() {
-  document.getElementById("app").classList.add("app-locked");
   const configResponse = await fetch("/api/config");
   const config = await configResponse.json();
   if (!config.configured) {

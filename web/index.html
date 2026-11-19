@@ -13,7 +13,14 @@
 </head>
 <body>
   <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
-  <div id="app" class="app-locked">
+  <div id="app">
+    <div id="workspace-loader" class="workspace-loader" role="status" aria-live="polite" aria-label="Loading your workspace">
+      <div class="skeleton-shell">
+        <aside class="skeleton-sidebar"><div class="skeleton-brand skeleton-block"></div><div class="skeleton-nav skeleton-block"></div><div class="skeleton-nav skeleton-block"></div><div class="skeleton-nav skeleton-block"></div><div class="skeleton-profile skeleton-block"></div></aside>
+        <main class="skeleton-main"><div class="skeleton-topbar skeleton-block"></div><div class="skeleton-heading skeleton-block"></div><div class="skeleton-stats"><i class="skeleton-block"></i><i class="skeleton-block"></i><i class="skeleton-block"></i></div><div class="skeleton-content"><i class="skeleton-block"></i><i class="skeleton-block"></i></div></main>
+      </div>
+      <p>Preparing your SONIVOX workspace…</p>
+    </div>
     <aside class="sidebar" id="sidebar">
       <a class="brand" href="#" data-page="home"><span class="brand-mark">S</span><span>SONI<span class="brand-accent">VOX</span></span></a>
       <div class="workspace-label">STUDIOS & WORKSPACE</div>
