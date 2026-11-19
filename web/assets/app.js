@@ -27,6 +27,7 @@ document.querySelectorAll("[data-page]").forEach(el => el.addEventListener("clic
 document.getElementById("menu-toggle").addEventListener("click", () => document.getElementById("sidebar").classList.toggle("open"));
 
 async function enterWorkspace() {
+  document.getElementById("workspace-loader")?.remove();
   document.getElementById("auth-gate")?.remove();
   const email = currentSession?.user?.email || "Signed in";
   document.querySelector(".profile-copy strong").textContent = email;
@@ -45,7 +46,6 @@ async function enterWorkspace() {
   await loadSpeechHistory();
   await loadUsage();
   await loadApiKeys();
-  document.getElementById("workspace-loader")?.remove();
 }
 function lockWorkspace() {
   currentSession = null;
