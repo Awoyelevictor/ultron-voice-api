@@ -20,11 +20,10 @@
       <nav class="nav">
         <button class="nav-link active" data-page="dashboard"><span class="nav-icon">◫</span>Voice Studio</button>
         <button class="nav-link" data-page="voices"><span class="nav-icon">◉</span>My voices</button>
-        <button class="nav-link" data-page="singing"><span class="nav-icon">♫</span>Singing Studio</button>
         <button class="nav-link" data-page="keys"><span class="nav-icon">⌘</span>API keys</button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="plan-card"><div class="plan-top"><span class="plan-dot"></span> STARTER WORKSPACE</div><p>Speech and singing, together in one platform.</p><button class="text-button" data-page="dashboard">Open Voice Studio <span>↗</span></button></div>
+        <div class="plan-card"><div class="plan-top"><span class="plan-dot"></span> STARTER WORKSPACE</div><p>African-language speech in one focused platform.</p><button class="text-button" data-page="dashboard">Open Voice Studio <span>↗</span></button></div>
         <div class="profile"><div class="avatar">S</div><div class="profile-copy"><strong>Loading account…</strong><small>Secure workspace</small></div><span class="more">•••</span></div>
       </div>
     </aside>
@@ -47,35 +46,7 @@
             <label class="field-label" for="speech-text">YOUR SCRIPT <span id="char-count">0 / 1,000</span></label>
             <textarea id="speech-text" maxlength="1000" placeholder="Type or paste something you want to hear…"></textarea>
             <div class="field-row"><div class="field-group"><label class="field-label" for="voice-select">VOICE</label><select id="voice-select"><option value="">Add a voice profile first</option></select></div><div class="field-group"><label class="field-label" for="language-select">LANGUAGE</label><select id="language-select"><option value="eng">English</option><option value="yor">Yoruba</option><option value="hau">Hausa</option><option value="ibo">Igbo</option><option value="ful">Fulfulde</option></select></div></div>
-            <div class="field-group engine-field"><label class="field-label" for="engine-select">SPEECH ENGINE</label><select id="engine-select"><option value="africa">Africa TTS · African languages</option><option value="silencio">Silencio-2 · English voice cloning</option></select><p class="microcopy" id="engine-hint">Africa TTS supports English, Yoruba, Hausa, Igbo and Fulfulde.</p></div>
-            <div id="silencio-options" class="field-row silencio-options hidden">
-              <div class="field-group">
-                <label class="field-label" for="silencio-emotion">VOICE EMOTION</label>
-                <select id="silencio-emotion">
-                  <option value="none">Neutral</option>
-                  <option value="happy">Happy</option>
-                  <option value="sad">Sad</option>
-                  <option value="angry">Angry</option>
-                  <option value="fear">Fear</option>
-                  <option value="surprised">Surprised</option>
-                  <option value="whisper">Whisper</option>
-                </select>
-              </div>
-              <div class="field-group">
-                <label class="field-label" for="silencio-speaker">SPEAKER PRESET</label>
-                <select id="silencio-speaker">
-                  <option value="260">260 · Default</option>
-                  <option value="1320">1320</option>
-                  <option value="2094">2094</option>
-                  <option value="3575">3575</option>
-                  <option value="5639">5639</option>
-                  <option value="6930">6930</option>
-                  <option value="7127">7127</option>
-                  <option value="7729">7729</option>
-                </select>
-              </div>
-              <p class="microcopy">The uploaded voice sample is used as the reference. The speaker preset is a separate Silencio model setting.</p>
-            </div>
+            <p class="microcopy">Africa TTS supports English, Yoruba, Hausa, Igbo and Fulfulde.</p>
 
             <button class="primary-button full-button" id="generate-button" disabled><span>✦</span> Generate speech <span class="button-arrow">→</span></button>
             <p class="microcopy">Only use voice samples you own or are explicitly authorized to use.</p>
@@ -112,61 +83,6 @@
         <div class="section-title-row"><div><h2>Saved voices</h2><p>Your private voice collection</p></div><span class="soft-tag">0 VOICES</span></div>
         <div class="empty-library"><div class="empty-icon">◉</div><strong>No voices added yet</strong><p>Your saved voice profiles will show up here.</p><button class="text-button" id="empty-add-button">Add your first voice →</button></div>
       </section>
-      <section class="page hidden" id="page-singing">
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">SONIVOX VOCAL LAB</div>
-            <h1>Singing <span>Studio.</span></h1>
-            <p class="subheading">Turn your lyrics into a solo vocal performance.</p>
-          </div>
-          <span class="soft-tag">AI SINGING</span>
-        </div>
-        <div class="studio-layout">
-          <section class="panel composer">
-            <div class="panel-heading">
-              <div><div class="eyebrow">VOCAL CREATION</div><h2>Create a song</h2></div>
-              <span class="soft-tag">VOICE ONLY</span>
-            </div>
-            <label class="field-label" for="singing-voice-select">REFERENCE VOICE</label>
-            <select id="singing-voice-select"><option value="">Loading saved voices…</option></select>
-            <label class="field-label" for="singing-lyrics">YOUR LYRICS <span id="singing-char-count">0 / 3,000</span></label>
-            <textarea id="singing-lyrics" maxlength="3000" placeholder="Write the lyrics you want the voice to sing…"></textarea>
-            <div class="field-group">
-              <label class="field-label" for="singing-style">VOCAL STYLE</label>
-              <select id="singing-style">
-                <option>Natural and emotional</option>
-                <option>Smooth R&amp;B</option>
-                <option>Gospel solo</option>
-                <option>Afrobeats vocal style</option>
-                <option>Soft pop</option>
-                <option>Soulful ballad</option>
-              </select>
-            </div>
-            <label class="field-label" for="singing-direction">CUSTOM DIRECTION (OPTIONAL)</label>
-            <input id="singing-direction" type="text" maxlength="500" placeholder="e.g. Calm, warm, expressive and melodic">
-            <button class="primary-button full-button" id="singing-generate-button" disabled>
-              ✦ Generate singing <span class="button-arrow">→</span>
-            </button>
-            <p class="microcopy">Uses your saved voice recording. Only use voices you own or have permission to use. Singing generation does not use your speech character allowance.</p>
-          </section>
-          <aside class="panel output-panel">
-            <div class="panel-heading">
-              <div><div class="eyebrow">VOCAL OUTPUT</div><h2>Your performance</h2></div>
-              <span class="output-icon">♫</span>
-            </div>
-            <div class="empty-audio" id="singing-output">
-              <div class="audio-orb"><span>♫</span></div>
-              <strong>Your vocals will appear here</strong>
-              <p>Generate a performance to listen to and download your WAV file.</p>
-            </div>
-            <div class="output-footer"><span>WAV AUDIO</span><span>SOLO VOCALS</span></div>
-          </aside>
-        </div>
-        <section class="panel history-panel">
-          <div class="panel-heading"><div><div class="eyebrow">VOCAL LIBRARY</div><h2>Recent singing performances</h2></div><span class="soft-tag">SINGING ONLY</span></div>
-          <div class="history-list" id="singing-history"><p class="history-empty">Your singing history will appear here.</p></div>
-        </section>
-      </section>
       <section class="page hidden" id="page-keys">
         <div class="page-heading"><div><div class="eyebrow">DEVELOPER ACCESS</div><h1>API <span>keys.</span></h1><p class="subheading">Connect SONIVOX to the apps and workflows you build.</p></div><button class="primary-button" id="create-key-button" disabled>＋ Create API key</button></div>
         <div class="notice-card"><div class="notice-icon">⌘</div><div><strong>Build with the SONIVOX API.</strong><p>Create a key bound to a saved voice preset. Developers only send text by default; voice overrides are optional and controlled by you. Your monthly free allowance is shared with the dashboard.</p></div></div>
@@ -197,18 +113,14 @@ Content-Type: application/json</code></pre>
           <div class="docs-table-wrap"><table class="docs-table"><thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead><tbody>
             <tr><td><code>text</code></td><td>Yes</td><td>The words to convert into speech. Send between 1 and 1,000 characters per request.</td></tr>
             <tr><td><code>lang</code></td><td>No</td><td>Language code. Defaults to <code>eng</code> (English).</td></tr>
-            <tr><td><code>engine</code></td><td>No</td><td><code>africa</code> (default) or <code>silencio</code>. Silencio-2 currently accepts English only.</td></tr>
-            <tr><td><code>emotion</code></td><td>No</td><td>Silencio-only emotion: <code>none</code>, <code>happy</code>, <code>sad</code>, <code>angry</code>, <code>fear</code>, <code>surprised</code> or <code>whisper</code>. Defaults to <code>none</code>.</td></tr>
-            <tr><td><code>silencio_voice_id</code></td><td>No</td><td>Silencio speaker selector. Defaults to <code>260</code>. Accepted IDs: <code>1320</code>, <code>2094</code>, <code>260</code>, <code>3575</code>, <code>5639</code>, <code>6930</code>, <code>7127</code> and <code>7729</code>.</td></tr>
             <tr><td><code>voice_id</code></td><td>Usually no</td><td>Not needed for a preset-bound key. Only send it when the key owner enabled voice overrides. Older keys without a preset require it.</td></tr>
           </tbody></table></div>
 
-          <h3>3. Speech engines and supported languages</h3>
-          <p>The optional <code>engine</code> field selects the speech provider. It defaults to <code>africa</code>, so existing API requests continue to work. Set it to <code>silencio</code> to use Silencio-2 with the selected saved voice sample. The sample is uploaded to the Silencio Hugging Face Space for processing; only use a voice you own or are explicitly authorized to use.</p>
+          <h3>3. Supported languages</h3>
           <div class="docs-language-grid">
             <span><b>eng</b> English</span><span><b>yor</b> Yoruba</span><span><b>hau</b> Hausa</span><span><b>ibo</b> Igbo</span><span><b>ful</b> Fulfulde</span>
           </div>
-          <p>Use the three-letter language codes exactly as shown. For example, use <code>eng</code>, not <code>en</code>. Africa TTS supports all five languages listed above. Silencio-2 currently supports English only; requests using another language with <code>engine: "silencio"</code> are rejected rather than silently routed to another provider.</p>
+          <p>Use the three-letter language codes exactly as shown. Africa TTS supports all five languages listed above.</p>
 
           <h3>4. Copy-and-run examples</h3>
           <p><strong>cURL</strong></p>

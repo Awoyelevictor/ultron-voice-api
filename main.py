@@ -6,10 +6,9 @@ import hashlib
 import logging
 import os
 import time
-import tempfile
 import uuid
 import wave
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
@@ -26,146 +25,21 @@ TTS_API = os.getenv(
     "TTS_API_URL",
     "https://michsethowusuwfp3--africa-tts-api-api.us-east.modal.run",
 ).rstrip("/")
-SILENCIO_API = os.getenv(
-    "SILENCIO_API_URL",
-    "https://hugging-apps-silencio-2.hf.space",
-).rstrip("/")
 API_SECRET = os.getenv("ULTRON_VOICE_SECRET", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
 VOICE_BUCKET = "sonivox-voices"
-HF_TOKEN = os.getenv("HF_TOKEN", "").strip()
-SINGING_SPACE = "phoenix1406/sonivox-vocal-studio"
 
 
 class SpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
     voice_id: str | None = None
     lang: str = "eng"
-    engine: str = "africa"
-    emotion: str = "none"
-    silencio_voice_id: str = "260"
-
-
-def validate_speech_engine(data: SpeechRequest) -> None:
-    if data.engine not in {"africa", "silencio"}:
-        raise HTTPException(status_code=400, detail="Engine must be 'africa' or 'silencio'")
-    if data.engine == "silencio":
-        if data.lang != "eng":
-            raise HTTPException(status_code=400, detail="Silencio-2 currently supports English only. Choose Africa TTS for other languages.")
-        if data.emotion not in {"none", "happy", "sad", "angry", "fear", "surprised", "whisper"}:
-            raise HTTPException(status_code=400, detail="Unsupported Silencio emotion")
-        if data.silencio_voice_id not in {"1320", "2094", "260", "3575", "5639", "6930", "7127", "7729"}:
-            raise HTTPException(status_code=400, detail="Unsupported Silencio speaker ID")
-
-
-async def generate_silencio_audio(client: httpx.AsyncClient, text: str, voice_sample: bytes,
-                                  emotion: str = "none", speaker_id: str = "260") -> bytes:
-    try:
-        uploaded = await client.post(
-            f"{SILENCIO_API}/gradio_api/upload",
-            files={"files": ("sonivox-reference.wav", voice_sample, "audio/wav")},
-            timeout=httpx.Timeout(connect=20.0, read=90.0, write=90.0, pool=20.0),
-        )
-        if uploaded.status_code != 200:
-            logger.warning("Silencio reference upload returned HTTP %s", uploaded.status_code)
-            raise HTTPException(status_code=502, detail="Silencio could not receive the selected voice sample")
-        upload_data = uploaded.json()
-        if not isinstance(upload_data, list) or not upload_data or not isinstance(upload_data[0], str):
-            raise HTTPException(status_code=502, detail="Silencio returned an invalid voice upload response")
-        reference_path = upload_data[0]
-
-        submitted = await client.post(
-            f"{SILENCIO_API}/gradio_api/call/v2/synthesize",
-            json={
-                "text": text,
-                "voice_id": speaker_id,
-                "voice_audio": {"path": reference_path, "meta": {"_type": "gradio.FileData"}},
-                "emotion": emotion,
-                "seed": 42,
-                "randomize_seed": True,
-            },
-            timeout=httpx.Timeout(connect=20.0, read=90.0, write=45.0, pool=20.0),
-        )
-        if submitted.status_code not in (200, 201):
-            logger.warning("Silencio synthesis submission returned HTTP %s", submitted.status_code)
-            raise HTTPException(status_code=502, detail="Silencio could not start speech generation")
-        event_id = submitted.json().get("event_id")
-        if not event_id:
-            raise HTTPException(status_code=502, detail="Silencio did not return a generation job ID")
-
-        events = await client.get(
-            f"{SILENCIO_API}/gradio_api/call/synthesize/{quote(str(event_id), safe='')}",
-            timeout=httpx.Timeout(connect=20.0, read=240.0, write=30.0, pool=20.0),
-        )
-        if events.status_code != 200:
-            logger.warning("Silencio result stream returned HTTP %s", events.status_code)
-            raise HTTPException(status_code=502, detail="Silencio could not return the generated speech")
-
-        event_name, data_lines, result_data = "", [], None
-        for line in events.text.splitlines() + [""]:
-            if line.startswith("event:"):
-                event_name = line[6:].strip()
-            elif line.startswith("data:"):
-                data_lines.append(line[5:].strip())
-            elif not line:
-                if event_name == "complete" and data_lines:
-                    result_data = json.loads("\n".join(data_lines))
-                    break
-                if event_name == "error":
-                    upstream_error = "\\n".join(data_lines).strip()
-                    if upstream_error:
-                        logger.error("Silencio synthesis job failed; upstream error: %s", upstream_error[:1000])
-                    else:
-                        logger.error("Silencio synthesis job failed without an upstream error payload")
-                    raise HTTPException(
-                        status_code=502,
-                        detail="Silencio could not complete speech generation. Please retry; if the issue continues, contact support.",
-                    )
-                event_name, data_lines = "", []
-        if not isinstance(result_data, list) or not result_data or not isinstance(result_data[0], dict):
-            raise HTTPException(status_code=502, detail="Silencio returned no valid speech audio")
-        audio_data = result_data[0]
-        audio_url, audio_path = audio_data.get("url"), audio_data.get("path")
-        if audio_url:
-            if audio_url.startswith("/"):
-                audio_url = SILENCIO_API + audio_url
-            elif not urlparse(audio_url).scheme:
-                audio_url = f"{SILENCIO_API}/{audio_url.lstrip('/')}"
-            parsed_audio_url = urlparse(audio_url)
-            if parsed_audio_url.scheme not in {"http", "https"} or parsed_audio_url.netloc != urlparse(SILENCIO_API).netloc:
-                raise HTTPException(status_code=502, detail="Silencio returned an unexpected audio host")
-        elif audio_path:
-            audio_url = f"{SILENCIO_API}/gradio_api/file={str(audio_path).lstrip('/')}"
-        else:
-            raise HTTPException(status_code=502, detail="Silencio returned no downloadable audio file")
-
-        audio_response = await client.get(
-            audio_url,
-            timeout=httpx.Timeout(connect=20.0, read=90.0, write=30.0, pool=20.0),
-        )
-        if audio_response.status_code != 200 or not audio_response.content.startswith(b"RIFF"):
-            raise HTTPException(status_code=502, detail="Silencio returned invalid WAV audio")
-        return audio_response.content
-    except HTTPException:
-        raise
-    except httpx.TimeoutException as exc:
-        logger.warning("Silencio request timed out")
-        raise HTTPException(status_code=504, detail="Silencio speech generation timed out") from exc
-    except httpx.RequestError as exc:
-        logger.warning("Silencio connection failed: %s", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="Could not reach Silencio") from exc
-    except (ValueError, TypeError, KeyError, AttributeError) as exc:
-        logger.exception("Silencio returned an invalid response")
-        raise HTTPException(status_code=502, detail="Silencio returned an invalid response") from exc
 
 
 async def generate_speech_audio(client: httpx.AsyncClient, text: str, lang: str,
-                                voice_sample: bytes, engine: str, emotion: str,
-                                silencio_voice_id: str) -> bytes:
-    if engine == "silencio":
-        return await generate_silencio_audio(client, text, voice_sample, emotion, silencio_voice_id)
+                                voice_sample: bytes) -> bytes:
     try:
         response = await client.post(
             f"{TTS_API}/v1/tts",
@@ -188,13 +62,6 @@ async def generate_speech_audio(client: httpx.AsyncClient, text: str, lang: str,
     except httpx.RequestError as exc:
         logger.warning("Africa TTS connection failed: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Could not reach Africa TTS") from exc
-
-
-class SingingRequest(BaseModel):
-    lyrics: str = Field(min_length=1, max_length=3000)
-    voice_id: str
-    style: str = "Natural and emotional"
-    custom_style: str = Field(default="", max_length=500)
 
 
 class LegacySpeechRequest(BaseModel):
@@ -357,7 +224,6 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
-    validate_speech_engine(data)
     if data.lang not in {"eng", "yor", "hau", "ibo", "ful"}:
         raise HTTPException(status_code=400, detail="Unsupported language")
     timeout = httpx.Timeout(connect=20.0, read=260.0, write=90.0, pool=20.0)
@@ -414,10 +280,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
         if not reserve.json().get("allowed"):
             raise HTTPException(status_code=402, detail="Monthly free character allowance exhausted")
         try:
-            audio = await generate_speech_audio(
-                client, text, data.lang, voice_sample, data.engine,
-                data.emotion, data.silencio_voice_id,
-            )
+            audio = await generate_speech_audio(client, text, data.lang, voice_sample)
             if not audio.startswith(b"RIFF"):
                 raise HTTPException(status_code=502, detail="Voice provider returned invalid WAV audio")
             duration_ms = None
@@ -465,8 +328,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
                 raise HTTPException(status_code=502, detail="Could not finalize usage reservation")
             return {"id": generation_id, "audio_url": audio_url,
                     "audio_path": audio_path, "duration_ms": duration_ms,
-                    "characters_used": len(text), "preset": preset["name"] if preset else None,
-                    "engine": data.engine}
+                    "characters_used": len(text), "preset": preset["name"] if preset else None}
         except Exception:
             try:
                 await client.post(
@@ -481,164 +343,6 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
 
 
 
-def run_singing_model(reference_bytes, lyrics, style, custom_style):
-    from gradio_client import Client, handle_file
-
-    with tempfile.TemporaryDirectory(prefix="sonivox-singing-") as folder:
-        reference_path = os.path.join(folder, "reference.wav")
-        with open(reference_path, "wb") as f:
-            f.write(reference_bytes)
-
-        client = Client(SINGING_SPACE, token=HF_TOKEN, verbose=False, analytics_enabled=False)
-        result = client.predict(
-            reference=handle_file(reference_path),
-            lyrics=lyrics,
-            style=style,
-            custom_style=custom_style,
-            api_name="/generate_song",
-        )
-
-        if isinstance(result, (list, tuple)):
-            result = result[0] if result else None
-        if isinstance(result, dict):
-            result = result.get("path") or result.get("name")
-
-        if not isinstance(result, str) or not os.path.isfile(result):
-            raise RuntimeError("Singing model returned no audio file.")
-
-        with open(result, "rb") as f:
-            audio = f.read()
-
-        if not audio.startswith(b"RIFF"):
-            raise RuntimeError("Singing model did not return a WAV file.")
-
-        return audio
-
-
-@app.post("/api/singing")
-async def generate_singing(
-    data: SingingRequest,
-    authorization: str = Header(default="")
-):
-    if not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Sign in first.")
-    if not HF_TOKEN:
-        raise HTTPException(status_code=503, detail="Singing Studio is not configured.")
-
-    token = authorization.split(" ", 1)[1].strip()
-    lyrics = data.lyrics.strip()
-    if not lyrics:
-        raise HTTPException(status_code=400, detail="Enter your lyrics.")
-
-    allowed_styles = {
-        "Natural and emotional", "Smooth R&B", "Gospel solo",
-        "Afrobeats vocal style", "Soft pop", "Soulful ballad",
-    }
-    if data.style not in allowed_styles:
-        raise HTTPException(status_code=400, detail="Unsupported vocal style.")
-
-    timeout = httpx.Timeout(connect=20, read=240, write=60, pool=20)
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        user = await get_authenticated_user(client, token)
-        user_id = user["id"]
-
-        voice_response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/sonivox_voices",
-            params={
-                "id": f"eq.{data.voice_id}",
-                "user_id": f"eq.{user_id}",
-                "select": "id,name,sample_path",
-                "limit": "1",
-            },
-            headers=supabase_headers(token),
-        )
-        if voice_response.status_code != 200:
-            raise HTTPException(status_code=502, detail="Could not load voice profile.")
-
-        voices = voice_response.json()
-        if not voices:
-            raise HTTPException(status_code=404, detail="Voice profile not found.")
-
-        sample_path = voices[0]["sample_path"]
-        if not sample_path.startswith(f"{user_id}/") or ".." in sample_path.split("/"):
-            raise HTTPException(status_code=403, detail="Invalid voice sample path.")
-
-        sample = await client.get(
-            f"{SUPABASE_URL}/storage/v1/object/authenticated/"
-            f"{VOICE_BUCKET}/{quote(sample_path, safe='/')}",
-            headers=supabase_headers(token),
-        )
-        if sample.status_code != 200:
-            raise HTTPException(status_code=404, detail="Could not load voice recording.")
-
-        try:
-            audio = await asyncio.to_thread(
-                run_singing_model,
-                sample.content,
-                lyrics,
-                data.style,
-                data.custom_style.strip(),
-            )
-        except Exception as exc:
-            logger.exception("Singing generation failed")
-            raise HTTPException(
-                status_code=502,
-                detail="Singing generation failed. Check the Hugging Face Space.",
-            ) from exc
-
-        duration_ms = None
-        try:
-            with wave.open(io.BytesIO(audio), "rb") as wav:
-                duration_ms = int(wav.getnframes() / wav.getframerate() * 1000)
-        except (wave.Error, ZeroDivisionError):
-            pass
-
-        generation_id = str(uuid.uuid4())
-        audio_path = f"{user_id}/generations/{generation_id}.wav"
-
-        upload = await client.post(
-            f"{SUPABASE_URL}/storage/v1/object/"
-            f"{VOICE_BUCKET}/{quote(audio_path, safe='/')}",
-            headers={
-                **supabase_headers(token),
-                "Content-Type": "audio/wav",
-                "x-upsert": "false",
-            },
-            content=audio,
-        )
-        if upload.status_code not in (200, 201):
-            raise HTTPException(status_code=502, detail="Could not save generated vocals.")
-
-        history = await client.post(
-            f"{SUPABASE_URL}/rest/v1/sonivox_generations",
-            headers={
-                **supabase_headers(token),
-                "Content-Type": "application/json",
-                "Prefer": "return=representation",
-            },
-            json={
-                "id": generation_id,
-                "user_id": user_id,
-                "voice_id": data.voice_id,
-                "input_text": lyrics,
-                "generation_type": "singing",
-                "status": "completed",
-                "audio_path": audio_path,
-                "duration_ms": duration_ms,
-            },
-        )
-        if history.status_code not in (200, 201):
-            logger.error("Singing history insert failed: HTTP %s", history.status_code)
-            raise HTTPException(status_code=502, detail="Vocals saved, but history failed.")
-
-        return {
-            "id": generation_id,
-            "audio_path": audio_path,
-            "duration_ms": duration_ms,
-            "type": "singing",
-        }
-
 @app.post("/api/speech")
 async def generate_speech(data: SpeechRequest, authorization: str = Header(default="")):
     if not authorization.lower().startswith("bearer "):
@@ -649,7 +353,6 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
-    validate_speech_engine(data)
     if data.lang not in {"eng", "yor", "hau", "ibo", "ful"}:
         raise HTTPException(status_code=400, detail="Unsupported language")
 
@@ -694,10 +397,7 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
 
         try:
             started = time.monotonic()
-            audio = await generate_speech_audio(
-                client, text, data.lang, voice_sample, data.engine,
-                data.emotion, data.silencio_voice_id,
-            )
+            audio = await generate_speech_audio(client, text, data.lang, voice_sample)
             if not audio.startswith(b"RIFF"):
                 raise HTTPException(status_code=502, detail="Voice provider returned invalid WAV audio")
             duration_ms = None
@@ -740,7 +440,7 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
                 raise HTTPException(status_code=502, detail="Audio was created but usage could not be finalized")
             logger.info("SONIVOX generated audio in %.2fs for user %s", time.monotonic() - started, user_id)
             return {"id": generation_id, "audio_path": audio_path,
-                    "duration_ms": duration_ms, "engine": data.engine}
+                    "duration_ms": duration_ms}
         except Exception:
             try:
                 await client.post(
