@@ -353,7 +353,6 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
-    validate_speech_engine(data)
     if data.lang not in {"eng", "yor", "hau", "ibo", "ful"}:
         raise HTTPException(status_code=400, detail="Unsupported language")
 
