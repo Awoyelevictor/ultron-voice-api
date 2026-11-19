@@ -535,4 +535,9 @@ async function init() {
     else if (currentSession) lockWorkspace();
   });
 }
-init().catch(error => notify("Could not start SONIVOX: " + error.message));
+init().catch(error => {
+  console.error("SONIVOX workspace initialization failed:", error);
+  // Never leave the dashboard in its blurred loading state when session
+  // initialization fails. Return to the sign-in screen so the user can retry.
+  location.replace("/signin?reason=session-init");
+});
