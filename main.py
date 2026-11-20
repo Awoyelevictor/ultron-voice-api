@@ -38,6 +38,75 @@ class SpeechRequest(BaseModel):
     lang: str = "eng"
 
 
+def validate_generated_wav(audio: bytes) -> dict:
+    """Validate the WAV container and reject files that contain no audible signal."""
+    if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+        raise HTTPException(status_code=502, detail="Speech provider returned an invalid WAV file")
+    try:
+        with wave.open(io.BytesIO(audio), "rb") as wav:
+            channels = wav.getnchannels()
+            sample_rate = wav.getframerate()
+            frame_count = wav.getnframes()
+            sample_width = wav.getsampwidth()
+            compression = wav.getcomptype()
+            if not channels or not sample_rate or not frame_count:
+                raise wave.Error("WAV has no audio frames")
+            if compression != "NONE" or sample_width not in (1, 2, 3, 4):
+                raise wave.Error("WAV encoding is not supported PCM")
+            frames = wav.readframes(frame_count)
+            expected_bytes = frame_count * channels * sample_width
+            if len(frames) != expected_bytes:
+                raise wave.Error("WAV frame data is truncated")
+    except (wave.Error, EOFError, OSError) as exc:
+        logger.warning("Rejected malformed provider WAV: %s", str(exc)[:240])
+        raise HTTPException(status_code=502, detail="Speech provider returned an unreadable WAV file") from exc
+
+    # Decode PCM without an extra native dependency. WAV 8-bit PCM is unsigned;
+    # 16/24/32-bit PCM is signed little-endian.
+    scale = float(1 << (sample_width * 8 - 1))
+    peak = 0.0
+    sum_squares = 0.0
+    sample_count = 0
+    for offset in range(0, len(frames), sample_width):
+        raw = frames[offset:offset + sample_width]
+        if sample_width == 1:
+            value = raw[0] - 128
+        else:
+            value = int.from_bytes(raw, byteorder="little", signed=True)
+        normalized = value / scale
+        magnitude = abs(normalized)
+        if magnitude > peak:
+            peak = magnitude
+        sum_squares += normalized * normalized
+        sample_count += 1
+
+    rms = (sum_squares / sample_count) ** 0.5 if sample_count else 0.0
+    duration_ms = int(frame_count / sample_rate * 1000)
+    logger.info(
+        "Provider WAV inspected: duration_ms=%s sample_rate=%s channels=%s width=%s peak=%.7f rms=%.7f",
+        duration_ms, sample_rate, channels, sample_width, peak, rms,
+    )
+    # A real speech signal should be comfortably above the PCM noise floor.
+    # These conservative thresholds reject digital/near-digital silence while
+    # allowing naturally quiet speech recordings.
+    if peak < 0.0001 or rms < 0.00001:
+        logger.error(
+            "Rejected silent provider WAV: duration_ms=%s sample_rate=%s peak=%.7f rms=%.7f",
+            duration_ms, sample_rate, peak, rms,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Speech provider returned silent audio. No generation was saved or charged; please retry later.",
+        )
+    return {
+        "duration_ms": duration_ms,
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "peak": peak,
+        "rms": rms,
+    }
+
+
 async def generate_speech_audio(client: httpx.AsyncClient, text: str, lang: str,
                                 voice_sample: bytes) -> bytes:
     try:
@@ -63,17 +132,7 @@ async def generate_speech_audio(client: httpx.AsyncClient, text: str, lang: str,
                 detail=f"Africa TTS rejected the request (HTTP {response.status_code}): {provider_detail or 'No error details returned'}",
             )
         audio = response.content
-        if len(audio) < 44 or not audio.startswith(b"RIFF") or audio[8:12] != b"WAVE":
-            logger.error("Africa TTS returned invalid audio: content_type=%s bytes=%s",
-                         response.headers.get("content-type", "unknown"), len(audio))
-            raise HTTPException(status_code=502, detail="Africa TTS returned invalid WAV audio")
-        try:
-            with wave.open(io.BytesIO(audio), "rb") as wav:
-                if wav.getnframes() <= 0 or wav.getframerate() <= 0:
-                    raise wave.Error("empty WAV stream")
-        except (wave.Error, EOFError) as exc:
-            logger.error("Africa TTS returned an unreadable WAV: %s", exc)
-            raise HTTPException(status_code=502, detail="Africa TTS returned an unreadable WAV file") from exc
+        validate_generated_wav(audio)
         return audio
     except HTTPException:
         raise
@@ -526,8 +585,7 @@ async def speak(data: LegacySpeechRequest, x_api_key: str = Header(default="")):
                 if result.status_code == 429:
                     raise HTTPException(status_code=503, detail="TTS provider is rate-limiting requests")
                 result.raise_for_status()
-                if not result.content.startswith(b"RIFF"):
-                    raise HTTPException(status_code=502, detail="TTS provider returned invalid audio")
+                validate_generated_wav(result.content)
                 return Response(content=result.content, media_type="audio/wav")
             except httpx.HTTPStatusError as exc:
                 if attempt == 0 and exc.response.status_code in (500, 502, 503, 504):
