@@ -128,6 +128,39 @@ async function loadStats() {
   values[2].textContent = characters.toLocaleString();
 }
 
+async function downloadGenerationWav(audioPath, generationId, button) {
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Preparing WAV…";
+  try {
+    const {data, error} = await supabase.storage
+      .from("sonivox-voices")
+      .download(audioPath);
+    if (error) throw error;
+    if (!data || data.size < 44) throw new Error("The stored audio file is missing or too small.");
+    const header = new Uint8Array(await data.slice(0, 12).arrayBuffer());
+    const isWav = String.fromCharCode(...header.slice(0, 4)) === "RIFF"
+      && String.fromCharCode(...header.slice(8, 12)) === "WAVE";
+    if (!isWav) throw new Error("The stored object is not a valid WAV file.");
+    const wavBlob = new Blob([data], {type: "audio/wav"});
+    const objectUrl = URL.createObjectURL(wavBlob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = "sonivox-" + generationId + ".wav";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
+    notify("WAV download started.");
+  } catch (error) {
+    console.error("SONIVOX history WAV download failed:", error);
+    notify(error.message || "Could not download this WAV. Please retry.");
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
+
 async function loadGenerationHistory(type, containerId, emptyMessage) {
   const container = document.getElementById(containerId);
   if (!container || !supabase) return;
@@ -172,6 +205,21 @@ async function loadGenerationHistory(type, containerId, emptyMessage) {
         player.src = signed.signedUrl;
         player.className = "history-player";
         card.append(player);
+        if (type === "speech") {
+          const download = document.createElement("button");
+          download.type = "button";
+          download.className = "secondary-button history-download";
+          download.textContent = "Download WAV ↓";
+          download.addEventListener("click", () => {
+            downloadGenerationWav(item.audio_path, item.id, download);
+          });
+          card.append(download);
+        }
+      } else {
+        const unavailable = document.createElement("small");
+        unavailable.className = "history-error";
+        unavailable.textContent = "Audio link unavailable. Try refreshing history.";
+        card.append(unavailable);
       }
     }
     container.append(card);
