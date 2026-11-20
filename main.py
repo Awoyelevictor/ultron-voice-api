@@ -248,7 +248,20 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
             if not voice_id or not preset["allow_overrides"]:
                 voice_id = preset["voice_id"]
         elif not voice_id:
-            raise HTTPException(status_code=400, detail="This legacy API key requires voice_id. Create a preset-bound key for preset-based requests.")
+            # Simple API keys use the account's first saved voice automatically.
+            # Developers can still pass voice_id explicitly to select another voice.
+            default_voice_response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/sonivox_voices",
+                params={"user_id": f"eq.{user_id}", "select": "id", "order": "created_at.asc", "limit": "1"},
+                headers={**headers, "Accept": "application/json"},
+            )
+            if default_voice_response.status_code != 200:
+                logger.error("Default voice lookup failed: HTTP %s", default_voice_response.status_code)
+                raise HTTPException(status_code=503, detail="Could not load your default voice. Please retry.")
+            default_voices = default_voice_response.json()
+            if not default_voices:
+                raise HTTPException(status_code=409, detail="Add a voice profile in your SONIVOX dashboard before generating speech.")
+            voice_id = default_voices[0]["id"]
         voice_response = await client.get(
             f"{SUPABASE_URL}/rest/v1/sonivox_voices",
             params={"id": f"eq.{voice_id}", "user_id": f"eq.{user_id}",
