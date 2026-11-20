@@ -271,16 +271,40 @@ document.getElementById("generate-button").addEventListener("click", async () =>
     if (!response.ok) throw new Error(result.detail || "Speech generation failed");
     const {data:audioData,error} = await supabase.storage.from("sonivox-voices").download(result.audio_path);
     if (error) throw error;
+    if (!audioData || audioData.size < 44) {
+      throw new Error("The generated audio file is empty or incomplete.");
+    }
+    const wavHeader = new Uint8Array(await audioData.slice(0,12).arrayBuffer());
+    const validWav = String.fromCharCode(...wavHeader.slice(0,4)) === "RIFF"
+      && String.fromCharCode(...wavHeader.slice(8,12)) === "WAVE";
+    if (!validWav) {
+      throw new Error("SONIVOX stored an invalid WAV file. This generation cannot be played.");
+    }
+    // Supabase can return a generic Blob MIME type; label validated WAV bytes
+    // explicitly so Android/mobile browsers select the correct decoder.
+    const playableWav = new Blob([audioData], {type:"audio/wav"});
     if (audioUrl) URL.revokeObjectURL(audioUrl);
-    audioUrl = URL.createObjectURL(audioData);
+    audioUrl = URL.createObjectURL(playableWav);
     const output = document.querySelector(".empty-audio");
     output.innerHTML = "";
     const heading = document.createElement("strong");
     heading.textContent = "Your speech is ready";
     const player = document.createElement("audio");
     player.controls = true;
+    player.preload = "metadata";
     player.src = audioUrl;
     player.className = "audio-player";
+    player.addEventListener("error", () => {
+      const mediaError = player.error;
+      console.error("SONIVOX playback failed:", {
+        code: mediaError?.code,
+        message: mediaError?.message,
+        mimeType: playableWav.type,
+        bytes: playableWav.size
+      });
+      notify("Your browser could not decode this WAV file. Try downloading it to verify the audio.");
+    }, {once:true});
+    player.load();
     const download = document.createElement("a");
     download.href = audioUrl;
     download.download = "sonivox-" + result.id + ".wav";
