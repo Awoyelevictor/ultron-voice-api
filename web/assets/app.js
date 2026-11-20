@@ -418,7 +418,7 @@ async function loadApiKeys() {
     const meta = document.createElement("small");
     meta.textContent = "Created " + new Date(key.created_at).toLocaleDateString() +
       (key.last_used_at ? " · Last used " + new Date(key.last_used_at).toLocaleString() : " · Never used") +
-      (preset?.name ? " · Preset: " + preset.name + (preset.allow_overrides ? " · Overrides on" : " · Locked") : (key.preset_id ? " · Preset details unavailable" : " · Legacy voice selection"));
+      (preset?.name ? " · Preset: " + preset.name + (preset.allow_overrides ? " · Overrides on" : " · Locked") : (key.preset_id ? " · Preset details unavailable" : " · Account default voice"));
     copy.append(name,prefix,meta);
     const status = document.createElement("span");
     status.className = key.revoked_at ? "key-status revoked" : "key-status active";
@@ -459,49 +459,33 @@ async function loadApiKeys() {
   });
 }
 async function createApiKey() {
-  if (!voices.length) return notify("Add a voice profile before creating a preset-bound API key.");
-  const choices = voices.map((voice,index) => (index + 1) + ". " + voice.name).join("\n");
-  const selected = Number(prompt("Choose the voice for this API preset:\n" + choices));
-  if (!Number.isInteger(selected) || selected < 1 || selected > voices.length) return;
-  const voice = voices[selected - 1];
-  const presetName = prompt("Name this voice preset (for example, Warm Narrator):");
-  if (!presetName?.trim()) return;
-  const allowOverrides = confirm("Allow developers using this key to override the selected voice in individual requests?\n\nOK = Allow voice overrides\nCancel = Lock this key to the preset");
-  const keyName = prompt("Name this API key (for example, My Node.js app):");
-  if (!keyName?.trim()) return;
+  const keyName = (prompt("Name this API key:", "My application") || "My application").trim().slice(0,80);
+  if (!keyName) return;
   const button = document.getElementById("create-key-button");
   button.disabled = true;
   try {
-    const {data:preset,error:presetError} = await supabase.from("sonivox_voice_presets").insert({
-      user_id:currentSession.user.id,
-      voice_id:voice.id,
-      name:presetName.trim().slice(0,80),
-      settings:{},
-      allow_overrides:allowOverrides
-    }).select("id").single();
-    if (presetError) throw presetError;
     const random = crypto.getRandomValues(new Uint8Array(32));
     const secret = "svx_live_" + Array.from(random, byte => byte.toString(16).padStart(2,"0")).join("");
     const hash = await sha256Hex(secret);
     const prefix = secret.slice(0,16);
     const {error} = await supabase.from("sonivox_api_keys").insert({
       user_id:currentSession.user.id,
-      name:keyName.trim().slice(0,80),
+      name:keyName,
       key_prefix:prefix,
-      key_hash:hash,
-      preset_id:preset.id
+      key_hash:hash
     });
-    if (error) {
-      await supabase.from("sonivox_voice_presets").delete().eq("id",preset.id);
-      throw error;
-    }
+    if (error) throw error;
     document.getElementById("created-api-key").textContent = secret;
     document.getElementById("key-created").classList.remove("hidden");
     document.getElementById("copy-created-key").onclick = async () => {
-      await navigator.clipboard.writeText(secret);
-      notify("API key copied.");
+      try {
+        await navigator.clipboard.writeText(secret);
+        notify("API key copied.");
+      } catch {
+        notify("Select and copy the API key manually.");
+      }
     };
-    notify("Preset-bound API key created. Copy it now; it will not be shown again.");
+    notify("API key created. Copy it now; it will not be shown again.");
     await loadApiKeys();
     document.getElementById("key-created").scrollIntoView({behavior:"smooth",block:"center"});
   } catch (error) {
