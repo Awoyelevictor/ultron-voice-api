@@ -16,25 +16,26 @@
   <div id="app" class="app-locked">
     <aside class="sidebar" id="sidebar">
       <a class="brand" href="#" data-page="home"><span class="brand-mark">S</span><span>SONI<span class="brand-accent">VOX</span></span></a>
-      <div class="workspace-label">WORKSPACE</div>
+      <div class="workspace-label">STUDIOS & WORKSPACE</div>
       <nav class="nav">
-        <button class="nav-link active" data-page="dashboard"><span class="nav-icon">◫</span>Overview</button>
+        <button class="nav-link active" data-page="dashboard"><span class="nav-icon">◫</span>Voice Studio</button>
         <button class="nav-link" data-page="voices"><span class="nav-icon">◉</span>My voices</button>
+        <button class="nav-link" data-page="singing"><span class="nav-icon">♫</span>Singing Studio</button>
         <button class="nav-link" data-page="keys"><span class="nav-icon">⌘</span>API keys</button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="plan-card"><div class="plan-top"><span class="plan-dot"></span> STARTER WORKSPACE</div><p>Your private voice studio.</p><button class="text-button" data-page="dashboard">Open studio <span>↗</span></button></div>
+        <div class="plan-card"><div class="plan-top"><span class="plan-dot"></span> STARTER WORKSPACE</div><p>Speech and singing, together in one platform.</p><button class="text-button" data-page="dashboard">Open Voice Studio <span>↗</span></button></div>
         <div class="profile"><div class="avatar">S</div><div class="profile-copy"><strong>Loading account…</strong><small>Secure workspace</small></div><span class="more">•••</span></div>
       </div>
     </aside>
     <main class="main">
       <header class="topbar">
         <button class="mobile-menu" id="menu-toggle" aria-label="Open menu">☰</button>
-        <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="crumb">Overview</strong></div>
+        <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="crumb">Voice Studio</strong></div>
         <div class="top-actions"><span class="status-pill"><i></i> Connected</span><button class="help-button" title="Help">?</button><button class="user-chip" title="Account">S</button></div>
       </header>
       <section class="page" id="page-dashboard">
-        <div class="welcome-row"><div><div class="eyebrow">YOUR VOICE WORKSPACE</div><h1>Make your words <span>sound different.</span></h1><p class="subheading">Create natural-sounding speech with voices that feel unmistakably human.</p></div><div class="date-chip"><span class="live-dot"></span> YOUR STUDIO</div></div>
+        <div class="welcome-row"><div><div class="eyebrow">SONIVOX VOICE STUDIO</div><h1>Make your words <span>sound different.</span></h1><p class="subheading">Create natural-sounding speech with voices that feel unmistakably human.</p></div><div class="date-chip"><span class="live-dot"></span> VOICE STUDIO</div></div>
         <div class="stats-grid">
           <article class="stat-card"><div class="stat-label">VOICE PROFILES <span>◉</span></div><div class="stat-value">0</div><div class="stat-note">Your saved voices</div></article>
           <article class="stat-card"><div class="stat-label">GENERATIONS <span>↗</span></div><div class="stat-value">0</div><div class="stat-note">Audio created</div></article>
@@ -42,7 +43,7 @@
         </div>
         <section class="usage-card"><div class="usage-copy"><div class="eyebrow">YOUR FREE PLAN</div><strong><span id="usage-remaining">20,000</span> characters remaining</strong><p>20,000 characters included every month. Failed generations are refunded.</p></div><div class="usage-meter"><div class="usage-meter-track"><span id="usage-meter-fill"></span></div><small><span id="usage-used-label">0</span> / 20,000 used</small></div><span class="free-pill">FREE</span></section>\n        <div class="studio-layout">
           <section class="panel composer">
-            <div class="panel-heading"><div><div class="eyebrow">SPEECH PLAYGROUND</div><h2>Turn text into speech</h2></div><span class="soft-tag">CREATE</span></div>
+            <div class="panel-heading"><div><div class="eyebrow">TEXT-TO-SPEECH</div><h2>Turn text into speech</h2></div><span class="soft-tag">CREATE</span></div>
             <label class="field-label" for="speech-text">YOUR SCRIPT <span id="char-count">0 / 1,000</span></label>
             <textarea id="speech-text" maxlength="1000" placeholder="Type or paste something you want to hear…"></textarea>
             <div class="field-row"><div class="field-group"><label class="field-label" for="voice-select">VOICE</label><select id="voice-select"><option value="">Add a voice profile first</option></select></div><div class="field-group"><label class="field-label" for="language-select">LANGUAGE</label><select id="language-select"><option value="eng">English</option><option value="yor">Yoruba</option><option value="hau">Hausa</option><option value="ibo">Igbo</option><option value="ful">Fulfulde</option></select></div></div>
@@ -51,6 +52,11 @@
           </section>
           <aside class="panel output-panel"><div class="panel-heading"><div><div class="eyebrow">OUTPUT</div><h2>Your audio</h2></div><span class="output-icon">♫</span></div><div class="empty-audio"><div class="audio-orb"><span>♫</span></div><strong>Your next sound starts here</strong><p>Generated audio will appear here, ready to play and download.</p></div><div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="output-footer"><span>WAV AUDIO</span><span>READY WHEN YOU ARE</span></div></aside>
         </div>
+
+        <section class="panel history-panel">
+          <div class="panel-heading"><div><div class="eyebrow">VOICE STUDIO LIBRARY</div><h2>Recent speech generations</h2></div><span class="soft-tag">SPEECH ONLY</span></div>
+          <div class="history-list" id="speech-history"><p class="history-empty">Your speech history will appear here.</p></div>
+        </section>
         <section class="bottom-banner"><div class="banner-symbol">✳</div><div><strong>Your voice library is waiting.</strong><p>Add an authorized audio sample to build your private collection.</p></div><button class="secondary-button" data-page="voices">Explore my voices <span>→</span></button></section>
       </section>
       <section class="about-sonivox" aria-labelledby="about-sonivox-title">
@@ -75,6 +81,61 @@
         <div class="panel upload-panel"><div class="upload-art"><div class="upload-wave">∿</div></div><div class="upload-copy"><div class="eyebrow">BUILD YOUR LIBRARY</div><h2>Bring a voice to life.</h2><p>Upload an audio sample to create a reusable voice profile. Common formats like WAV, MP3, M4A, AAC, OGG, FLAC and OPUS are converted automatically. Only upload a voice you own or have explicit permission to use.</p><div class="upload-specs"><span>Multiple audio formats</span><span>Private storage</span><span>Consent required</span></div><button class="secondary-button" id="upload-info-button">How it works <span>→</span></button></div></div>
         <div class="section-title-row"><div><h2>Saved voices</h2><p>Your private voice collection</p></div><span class="soft-tag">0 VOICES</span></div>
         <div class="empty-library"><div class="empty-icon">◉</div><strong>No voices added yet</strong><p>Your saved voice profiles will show up here.</p><button class="text-button" id="empty-add-button">Add your first voice →</button></div>
+      </section>
+      <section class="page hidden" id="page-singing">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">SONIVOX VOCAL LAB</div>
+            <h1>Singing <span>Studio.</span></h1>
+            <p class="subheading">Turn your lyrics into a solo vocal performance.</p>
+          </div>
+          <span class="soft-tag">AI SINGING</span>
+        </div>
+        <div class="studio-layout">
+          <section class="panel composer">
+            <div class="panel-heading">
+              <div><div class="eyebrow">VOCAL CREATION</div><h2>Create a song</h2></div>
+              <span class="soft-tag">VOICE ONLY</span>
+            </div>
+            <label class="field-label" for="singing-voice-select">REFERENCE VOICE</label>
+            <select id="singing-voice-select"><option value="">Loading saved voices…</option></select>
+            <label class="field-label" for="singing-lyrics">YOUR LYRICS <span id="singing-char-count">0 / 3,000</span></label>
+            <textarea id="singing-lyrics" maxlength="3000" placeholder="Write the lyrics you want the voice to sing…"></textarea>
+            <div class="field-group">
+              <label class="field-label" for="singing-style">VOCAL STYLE</label>
+              <select id="singing-style">
+                <option>Natural and emotional</option>
+                <option>Smooth R&amp;B</option>
+                <option>Gospel solo</option>
+                <option>Afrobeats vocal style</option>
+                <option>Soft pop</option>
+                <option>Soulful ballad</option>
+              </select>
+            </div>
+            <label class="field-label" for="singing-direction">CUSTOM DIRECTION (OPTIONAL)</label>
+            <input id="singing-direction" type="text" maxlength="500" placeholder="e.g. Calm, warm, expressive and melodic">
+            <button class="primary-button full-button" id="singing-generate-button" disabled>
+              ✦ Generate singing <span class="button-arrow">→</span>
+            </button>
+            <p class="microcopy">Uses your saved voice recording. Only use voices you own or have permission to use. Singing generation does not use your speech character allowance.</p>
+          </section>
+          <aside class="panel output-panel">
+            <div class="panel-heading">
+              <div><div class="eyebrow">VOCAL OUTPUT</div><h2>Your performance</h2></div>
+              <span class="output-icon">♫</span>
+            </div>
+            <div class="empty-audio" id="singing-output">
+              <div class="audio-orb"><span>♫</span></div>
+              <strong>Your vocals will appear here</strong>
+              <p>Generate a performance to listen to and download your WAV file.</p>
+            </div>
+            <div class="output-footer"><span>WAV AUDIO</span><span>SOLO VOCALS</span></div>
+          </aside>
+        </div>
+        <section class="panel history-panel">
+          <div class="panel-heading"><div><div class="eyebrow">VOCAL LIBRARY</div><h2>Recent singing performances</h2></div><span class="soft-tag">SINGING ONLY</span></div>
+          <div class="history-list" id="singing-history"><p class="history-empty">Your singing history will appear here.</p></div>
+        </section>
       </section>
       <section class="page hidden" id="page-keys">
         <div class="page-heading"><div><div class="eyebrow">DEVELOPER ACCESS</div><h1>API <span>keys.</span></h1><p class="subheading">Connect SONIVOX to the apps and workflows you build.</p></div><button class="primary-button" id="create-key-button" disabled>＋ Create API key</button></div>

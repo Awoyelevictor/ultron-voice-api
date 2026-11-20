@@ -136,3 +136,57 @@
 .about-links a{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #314968;border-radius:7px;background:#12223a;color:#a9c7ff;text-decoration:none;font-size:9px;font-weight:700;transition:background .18s,border-color .18s}
 .about-links a:hover{background:#1a3150;border-color:#648bd0}
 .about-links a span{color:#7ce0e8}
+
+/* SONIVOX Singing Studio */
+#page-singing .composer textarea {
+  min-height: 190px;
+  line-height: 1.7;
+}
+
+#page-singing .composer select,
+#page-singing .composer input {
+  width: 100%;
+  margin-bottom: 18px;
+}
+
+#page-singing #singing-generate-button {
+  margin-top: 12px;
+}
+
+#page-singing .output-panel {
+  min-height: 380px;
+}
+
+#singing-output {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 260px;
+  text-align: center;
+}
+
+#singing-output audio {
+  width: 100%;
+  margin: 12px 0;
+}
+
+#singing-output p {
+  max-width: 340px;
+  line-height: 1.6;
+}
+
+#page-singing .page-heading {
+  margin-bottom: 28px;
+}
+
+/* Independent activity libraries for the two studios */
+.history-panel{margin-top:18px}
+.history-list{display:grid;gap:10px}
+.history-item{display:grid;gap:10px;padding:13px 14px;border:1px solid #26364b;border-radius:9px;background:#0c1420}
+.history-copy{display:grid;gap:5px;min-width:0}
+.history-copy strong{font-size:12px;line-height:1.5;color:#dce7f8;overflow-wrap:anywhere}
+.history-copy small,.history-empty{font-size:10px;color:#7f90a8}
+.history-player{width:100%;height:36px}
+.history-empty{margin:0;padding:12px 0}
