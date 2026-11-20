@@ -47,18 +47,47 @@ async def generate_speech_audio(client: httpx.AsyncClient, text: str, lang: str,
                   "voice_wav_base64": base64.b64encode(voice_sample).decode("ascii")},
         )
         if response.status_code == 429:
+            logger.warning("Africa TTS rate limited the request: %s", response.text[:1200])
             raise HTTPException(status_code=503, detail="Africa TTS is busy. Try again shortly.")
-        response.raise_for_status()
-        if not response.content.startswith(b"RIFF"):
+        if response.is_error:
+            # Preserve the provider's actionable validation message. This is
+            # essential for diagnosing 400s instead of returning a blind 502.
+            provider_detail = " ".join(response.text.split())[:1200]
+            logger.error(
+                "Africa TTS rejected speech request: HTTP %s; response=%s",
+                response.status_code,
+                provider_detail or "<empty response>",
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Africa TTS rejected the request (HTTP {response.status_code}): {provider_detail or 'No error details returned'}",
+            )
+        audio = response.content
+        if len(audio) < 44 or not audio.startswith(b"RIFF") or audio[8:12] != b"WAVE":
+            logger.error("Africa TTS returned invalid audio: content_type=%s bytes=%s",
+                         response.headers.get("content-type", "unknown"), len(audio))
             raise HTTPException(status_code=502, detail="Africa TTS returned invalid WAV audio")
-        return response.content
+        try:
+            with wave.open(io.BytesIO(audio), "rb") as wav:
+                if wav.getnframes() <= 0 or wav.getframerate() <= 0:
+                    raise wave.Error("empty WAV stream")
+        except (wave.Error, EOFError) as exc:
+            logger.error("Africa TTS returned an unreadable WAV: %s", exc)
+            raise HTTPException(status_code=502, detail="Africa TTS returned an unreadable WAV file") from exc
+        return audio
     except HTTPException:
         raise
     except httpx.TimeoutException as exc:
+        logger.warning("Africa TTS timed out")
         raise HTTPException(status_code=504, detail="Speech generation timed out") from exc
     except httpx.HTTPStatusError as exc:
-        logger.warning("Africa TTS returned HTTP %s", exc.response.status_code)
-        raise HTTPException(status_code=502, detail="Africa TTS could not generate this audio") from exc
+        # Kept as a defensive guard for future raise_for_status() calls.
+        provider_detail = " ".join(exc.response.text.split())[:1200]
+        logger.error("Africa TTS HTTP %s: %s", exc.response.status_code, provider_detail)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Africa TTS could not generate this audio (HTTP {exc.response.status_code}): {provider_detail}",
+        ) from exc
     except httpx.RequestError as exc:
         logger.warning("Africa TTS connection failed: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Could not reach Africa TTS") from exc
