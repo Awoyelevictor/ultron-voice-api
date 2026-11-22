@@ -25,6 +25,53 @@ TTS_API = os.getenv(
     "https://michsethowusuwfp3--africa-tts-api-api.us-east.modal.run",
 ).rstrip("/")
 API_SECRET = os.getenv("ULTRON_VOICE_SECRET", "")
+
+NAIJALINGO_API_URL = "https://api.9jalingo.org/v1/audio/speech"
+NAIJALINGO_API_KEY = os.getenv("NAIJALINGO_API_KEY", "").strip()
+NAIJALINGO_LANGUAGES = {"yor": "yo", "hau": "ha", "ibo": "ig", "pcm": "pcm"}
+
+
+async def synthesize_9jalingo_audio(
+    client: httpx.AsyncClient, text: str, lang: str, reference_audio: bytes
+) -> bytes:
+    """Generate cloned speech using 9jaLingo's OpenAI-compatible clone model."""
+    if not NAIJALINGO_API_KEY:
+        raise HTTPException(status_code=503, detail="9jaLingo is not configured. Add NAIJALINGO_API_KEY in the service environment.")
+    language = NAIJALINGO_LANGUAGES.get(lang)
+    if not language:
+        raise HTTPException(status_code=400, detail="Choose Yoruba, Hausa, Igbo, or Nigerian Pidgin.")
+    if not reference_audio:
+        raise HTTPException(status_code=400, detail="The selected voice sample is empty.")
+    payload = {
+        "model": "9jalingo-clone-1",
+        "input": text,
+        "response_format": "wav",
+        "language": language,
+        "reference_audio": reference_audio.hex(),
+    }
+    try:
+        response = await client.post(
+            NAIJALINGO_API_URL,
+            headers={"Authorization": f"Bearer {NAIJALINGO_API_KEY}"},
+            json=payload,
+        )
+        if response.status_code in (401, 403):
+            logger.error("9jaLingo rejected the configured API credential: HTTP %s", response.status_code)
+            raise HTTPException(status_code=503, detail="9jaLingo API key is invalid or does not have cloning access.")
+        if response.status_code == 429:
+            raise HTTPException(status_code=503, detail="9jaLingo rate limit or credit limit reached. Please retry later.")
+        if response.status_code >= 400:
+            logger.warning("9jaLingo returned HTTP %s: %s", response.status_code, response.text[:300])
+            raise HTTPException(status_code=502, detail="9jaLingo could not generate this audio.")
+        return response.content
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="9jaLingo speech generation timed out.") from exc
+    except httpx.RequestError as exc:
+        logger.warning("9jaLingo connection failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Could not reach 9jaLingo.") from exc
+
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
@@ -34,7 +81,7 @@ VOICE_BUCKET = "sonivox-voices"
 class SpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
     voice_id: str | None = None
-    lang: str = "eng"
+    lang: str = "yor"
 
 
 class LegacySpeechRequest(BaseModel):
@@ -177,6 +224,7 @@ async def readiness():
         "supabase_configured": bool(SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY),
         "developer_api_configured": bool(SUPABASE_SECRET_KEY),
         "legacy_voice_reference_configured": os.path.isfile(voice_path),
+        "9jalingo_configured": bool(NAIJALINGO_API_KEY),
     }
 
 
@@ -260,8 +308,8 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
-    if data.lang not in {"eng", "yor", "hau", "ibo", "ful"}:
-        raise HTTPException(status_code=400, detail="Unsupported language")
+    if data.lang not in NAIJALINGO_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Choose Yoruba, Hausa, Igbo, or Nigerian Pidgin.")
     timeout = httpx.Timeout(connect=15.0, read=100.0, write=45.0, pool=15.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         key_row, headers = await get_api_key_owner(client, raw_key)
@@ -303,7 +351,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
         )
         if sample_response.status_code != 200:
             raise HTTPException(status_code=404, detail="Voice sample could not be loaded")
-        voice_b64 = base64.b64encode(sample_response.content).decode("ascii")
+        voice_reference = sample_response.content
         reservation_id = str(uuid.uuid4())
         reserve = await client.post(
             f"{SUPABASE_URL}/rest/v1/rpc/reserve_sonivox_characters_for_user",
@@ -316,15 +364,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
         if not reserve.json().get("allowed"):
             raise HTTPException(status_code=402, detail="Monthly free character allowance exhausted")
         try:
-            tts = await client.post(
-                f"{TTS_API}/v1/tts",
-                json={"text": text, "lang": data.lang, "format": "wav",
-                      "voice_wav_base64": voice_b64},
-            )
-            if tts.status_code == 429:
-                raise HTTPException(status_code=503, detail="Voice provider is busy; retry shortly")
-            tts.raise_for_status()
-            audio = tts.content
+            audio = await synthesize_9jalingo_audio(client, text, data.lang, voice_reference)
             audio_info = inspect_generated_wav(audio)
             duration_ms = audio_info["duration_ms"]
             generation_id = str(uuid.uuid4())
@@ -433,27 +473,7 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
 
         try:
             started = time.monotonic()
-            try:
-                tts_response = await client.post(
-                    f"{TTS_API}/v1/tts",
-                    json={"text": text, "lang": data.lang, "format": "wav",
-                          "voice_wav_base64": voice_b64},
-                )
-                if tts_response.status_code == 429:
-                    raise HTTPException(status_code=503, detail="Voice provider is busy. Try again shortly.")
-                tts_response.raise_for_status()
-            except HTTPException:
-                raise
-            except httpx.TimeoutException as exc:
-                raise HTTPException(status_code=504, detail="Speech generation timed out") from exc
-            except httpx.HTTPStatusError as exc:
-                logger.warning("TTS provider returned HTTP %s", exc.response.status_code)
-                raise HTTPException(status_code=502, detail="Voice provider could not generate this audio") from exc
-            except httpx.RequestError as exc:
-                logger.warning("TTS provider connection failed: %s", type(exc).__name__)
-                raise HTTPException(status_code=502, detail="Could not reach the voice provider") from exc
-
-            audio = tts_response.content
+            audio = await synthesize_9jalingo_audio(client, text, data.lang, voice_reference)
             audio_info = inspect_generated_wav(audio)
             duration_ms = audio_info["duration_ms"]
 
