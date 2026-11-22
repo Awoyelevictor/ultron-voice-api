@@ -457,7 +457,7 @@ def _trim_uploaded_audio(source_file, start_seconds: float, end_seconds: float) 
                 raise HTTPException(status_code=400, detail="The uploaded file contains no audio track.")
             if container.duration and end_seconds > (container.duration / av.time_base) + 1:
                 raise HTTPException(status_code=400, detail="The selected end time is beyond the recording duration.")
-            container.seek(int(start_seconds * av.time_base), stream=audio_stream, backward=True, any_frame=False)
+            container.seek(int(start_seconds / float(audio_stream.time_base)), stream=audio_stream, backward=True, any_frame=False)
             resampler = av.AudioResampler(format="s16", layout="mono", rate=24000)
             with wave.open(output, "wb") as wav:
                 wav.setnchannels(1)
