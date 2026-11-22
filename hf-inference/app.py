@@ -6,6 +6,7 @@ import re
 import sys
 import tempfile
 import threading
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -97,13 +98,22 @@ async def clone_voice(
     if not raw_audio or len(raw_audio) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=400, detail="Reference audio is empty or exceeds the 20 MB limit.")
     try:
-        audio_array, sample_rate = sf.read(io.BytesIO(raw_audio), dtype="float32", always_2d=False)
+        try:
+            audio_array, sample_rate = sf.read(io.BytesIO(raw_audio), dtype="float32", always_2d=False)
+        except Exception:
+            # Browser uploads may be MP3/M4A/WebM; ffmpeg normalizes those to WAV.
+            decoded = subprocess.run(
+                ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+                 "-i", "pipe:0", "-f", "wav", "-ac", "1", "pipe:1"],
+                input=raw_audio, capture_output=True, check=True, timeout=30,
+            ).stdout
+            audio_array, sample_rate = sf.read(io.BytesIO(decoded), dtype="float32", always_2d=False)
         if audio_array.size == 0 or sample_rate < 8000 or sample_rate > 96000:
             raise ValueError("Unsupported audio sample rate or empty audio")
         if audio_array.ndim > 1:
             audio_array = np.mean(audio_array, axis=1)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail="Upload a valid WAV, FLAC, or OGG reference recording.") from exc
+        raise HTTPException(status_code=400, detail="Upload a valid audio recording (WAV, FLAC, OGG, MP3, M4A, or WebM).") from exc
 
     engine = load_model()
     output_segments = []
