@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 import httpx
 from gradio_client import Client, handle_file
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, File, Form, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -432,6 +432,113 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
             except Exception:
                 logger.exception("Could not refund failed developer API reservation")
             raise
+
+
+
+MAX_VOICE_SOURCE_BYTES = 500 * 1024 * 1024
+
+
+def _trim_uploaded_audio(source_file, start_seconds: float, end_seconds: float) -> bytes:
+    """Seek into the uploaded source and export only the selected segment as 24 kHz mono PCM WAV."""
+    try:
+        import av
+        import numpy as np
+    except ImportError as exc:
+        logger.exception("Server-side audio trimming dependencies are unavailable")
+        raise HTTPException(status_code=503, detail="The audio trimming service is not ready. Please try again later.") from exc
+
+    if start_seconds < 0 or end_seconds <= start_seconds or end_seconds - start_seconds > 600:
+        raise HTTPException(status_code=400, detail="Select a segment between 1 second and 10 minutes.")
+    output = io.BytesIO()
+    try:
+        with av.open(source_file) as container:
+            audio_stream = next((stream for stream in container.streams if stream.type == "audio"), None)
+            if audio_stream is None:
+                raise HTTPException(status_code=400, detail="The uploaded file contains no audio track.")
+            if container.duration and end_seconds > (container.duration / av.time_base) + 1:
+                raise HTTPException(status_code=400, detail="The selected end time is beyond the recording duration.")
+            container.seek(int(start_seconds * av.time_base), stream=audio_stream, backward=True, any_frame=False)
+            resampler = av.AudioResampler(format="s16", layout="mono", rate=24000)
+            with wave.open(output, "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(24000)
+                written = 0
+                for decoded in container.decode(audio_stream):
+                    converted = resampler.resample(decoded)
+                    for frame in converted:
+                        if frame.pts is None or frame.time_base is None:
+                            continue
+                        frame_start = float(frame.pts * frame.time_base)
+                        samples = frame.to_ndarray().reshape(-1)
+                        left = max(0, int((start_seconds - frame_start) * 24000 + 0.999999))
+                        right = min(len(samples), int((end_seconds - frame_start) * 24000 + 0.999999))
+                        if right > left:
+                            chunk = samples[left:right].astype(np.int16, copy=False).tobytes()
+                            wav.writeframesraw(chunk)
+                            written += right - left
+                        if frame_start >= end_seconds:
+                            break
+                    if frame.time is not None and float(frame.time) >= end_seconds:
+                        break
+                for frame in resampler.resample(None):
+                    if frame.pts is None or frame.time_base is None:
+                        continue
+                    frame_start = float(frame.pts * frame.time_base)
+                    samples = frame.to_ndarray().reshape(-1)
+                    left = max(0, int((start_seconds - frame_start) * 24000 + 0.999999))
+                    right = min(len(samples), int((end_seconds - frame_start) * 24000 + 0.999999))
+                    if right > left:
+                        chunk = samples[left:right].astype(np.int16, copy=False).tobytes()
+                        wav.writeframesraw(chunk)
+                        written += right - left
+                if written < 24000:
+                    raise HTTPException(status_code=422, detail="The selected segment contains less than one second of readable audio.")
+        return output.getvalue()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Server-side audio trim failed")
+        raise HTTPException(status_code=422, detail="Could not decode this audio file. Try exporting it as MP3, M4A or WAV.") from exc
+
+
+@app.post("/api/voice/trim")
+async def trim_voice_sample(
+    audio: UploadFile = File(...),
+    start_seconds: float = Form(...),
+    end_seconds: float = Form(...),
+    authorization: str = Header(default=""),
+):
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Sign in to add a voice profile.")
+    token = authorization.split(" ", 1)[1].strip()
+    if not audio.filename:
+        raise HTTPException(status_code=400, detail="Choose an audio file first.")
+    try:
+        audio.file.seek(0, os.SEEK_END)
+        source_size = audio.file.tell()
+        audio.file.seek(0)
+        if source_size <= 0 or source_size > MAX_VOICE_SOURCE_BYTES:
+            raise HTTPException(status_code=413, detail="The recording must be smaller than 500 MB.")
+        if end_seconds <= start_seconds or end_seconds - start_seconds > 600:
+            raise HTTPException(status_code=400, detail="Select no more than 10 minutes of audio.")
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            user = await get_authenticated_user(client, token)
+            user_id = user["id"]
+            wav_bytes = await asyncio.to_thread(_trim_uploaded_audio, audio.file, start_seconds, end_seconds)
+            sample_path = f"{user_id}/{uuid.uuid4()}.wav"
+            upload_response = await client.post(
+                f"{SUPABASE_URL}/storage/v1/object/{VOICE_BUCKET}/{quote(sample_path, safe='/')}",
+                headers={**supabase_headers(token), "Content-Type": "audio/wav", "x-upsert": "false"},
+                content=wav_bytes,
+            )
+            if upload_response.status_code not in (200, 201):
+                logger.error("Trimmed voice sample upload failed: HTTP %s", upload_response.status_code)
+                raise HTTPException(status_code=502, detail="The trimmed audio could not be saved to your private voice storage.")
+            return {"sample_path": sample_path, "duration_seconds": round((end_seconds - start_seconds), 2),
+                    "size_bytes": len(wav_bytes)}
+    finally:
+        await audio.close()
 
 
 @app.post("/api/speech")
