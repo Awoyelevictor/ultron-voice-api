@@ -19,7 +19,9 @@ RUN pip install --no-cache-dir \
     numpy soundfile librosa einops \
     lightning pytorch-lightning hydra-core omegaconf \
     transformers huggingface_hub safetensors accelerate sentencepiece \
-    vector-quantize-pytorch descript-audiotools protobuf==3.20.3 torchaudio==2.6.0
+    vector-quantize-pytorch descript-audiotools protobuf==3.20.3
+
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu124 torchaudio==2.6.0
 
 WORKDIR /app
 COPY app.py /app/app.py
