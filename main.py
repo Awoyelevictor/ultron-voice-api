@@ -26,51 +26,51 @@ TTS_API = os.getenv(
 ).rstrip("/")
 API_SECRET = os.getenv("ULTRON_VOICE_SECRET", "")
 
-NAIJALINGO_API_URL = "https://api.9jalingo.org/v1/audio/speech"
-NAIJALINGO_API_KEY = os.getenv("NAIJALINGO_API_KEY", "").strip()
-NAIJALINGO_LANGUAGES = {"yor": "yo", "hau": "ha", "ibo": "ig", "pcm": "pcm"}
+HF_TTS_INFERENCE_URL = os.getenv("HF_TTS_INFERENCE_URL", "").rstrip("/")
+HF_TTS_INFERENCE_TOKEN = os.getenv("HF_TTS_INFERENCE_TOKEN", "").strip()
+SUPPORTED_LANGUAGES = {"yor": "yo", "hau": "ha", "ibo": "ig", "pcm": "pcm"}
 
 
-async def synthesize_9jalingo_audio(
+async def synthesize_hf_model_audio(
     client: httpx.AsyncClient, text: str, lang: str, reference_audio: bytes
 ) -> bytes:
-    """Generate cloned speech using 9jaLingo's OpenAI-compatible clone model."""
-    if not NAIJALINGO_API_KEY:
-        raise HTTPException(status_code=503, detail="9jaLingo is not configured. Add NAIJALINGO_API_KEY in the service environment.")
-    language = NAIJALINGO_LANGUAGES.get(lang)
+    """Generate cloned speech through SONIVOX's private Hugging Face model service."""
+    if not HF_TTS_INFERENCE_URL or not HF_TTS_INFERENCE_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="Hugging Face voice inference is not configured. Set HF_TTS_INFERENCE_URL and HF_TTS_INFERENCE_TOKEN.",
+        )
+    language = SUPPORTED_LANGUAGES.get(lang)
     if not language:
         raise HTTPException(status_code=400, detail="Choose Yoruba, Hausa, Igbo, or Nigerian Pidgin.")
     if not reference_audio:
         raise HTTPException(status_code=400, detail="The selected voice sample is empty.")
-    payload = {
-        "model": "9jalingo-clone-1",
-        "input": text,
-        "response_format": "wav",
-        "language": language,
-        "reference_audio": reference_audio.hex(),
-    }
+
     try:
         response = await client.post(
-            NAIJALINGO_API_URL,
-            headers={"Authorization": f"Bearer {NAIJALINGO_API_KEY}"},
-            json=payload,
+            f"{HF_TTS_INFERENCE_URL}/v1/clone",
+            headers={"Authorization": f"Bearer {HF_TTS_INFERENCE_TOKEN}"},
+            data={"text": text, "language": language},
+            files={"reference_audio": ("reference.wav", reference_audio, "audio/wav")},
         )
         if response.status_code in (401, 403):
-            logger.error("9jaLingo rejected the configured API credential: HTTP %s", response.status_code)
-            raise HTTPException(status_code=503, detail="9jaLingo API key is invalid or does not have cloning access.")
+            logger.error("Hugging Face inference service rejected SONIVOX authentication")
+            raise HTTPException(status_code=503, detail="Voice inference service authentication failed.")
         if response.status_code == 429:
-            raise HTTPException(status_code=503, detail="9jaLingo rate limit or credit limit reached. Please retry later.")
+            raise HTTPException(status_code=503, detail="Voice inference service is busy. Please retry shortly.")
         if response.status_code >= 400:
-            logger.warning("9jaLingo returned HTTP %s: %s", response.status_code, response.text[:300])
-            raise HTTPException(status_code=502, detail="9jaLingo could not generate this audio.")
+            logger.warning("Hugging Face inference returned HTTP %s: %s", response.status_code, response.text[:300])
+            raise HTTPException(status_code=502, detail="The voice model could not generate this audio.")
+        if not response.content:
+            raise HTTPException(status_code=502, detail="The voice model returned an empty audio response.")
         return response.content
     except HTTPException:
         raise
     except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail="9jaLingo speech generation timed out.") from exc
+        raise HTTPException(status_code=504, detail="Voice generation timed out.") from exc
     except httpx.RequestError as exc:
-        logger.warning("9jaLingo connection failed: %s", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="Could not reach 9jaLingo.") from exc
+        logger.warning("Hugging Face inference connection failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Could not reach the voice inference service.") from exc
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
@@ -94,7 +94,7 @@ class LegacySpeechRequest(BaseModel):
 def inspect_generated_wav(audio: bytes) -> dict:
     """Validate the complete PCM WAV and reject empty or near-silent output."""
     if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
-        raise HTTPException(status_code=502, detail="Africa TTS returned an invalid WAV file")
+        raise HTTPException(status_code=502, detail="Voice model returned an invalid WAV file")
 
     try:
         with wave.open(io.BytesIO(audio), "rb") as wav:
@@ -112,8 +112,8 @@ def inspect_generated_wav(audio: bytes) -> dict:
             if len(frames) != expected_bytes:
                 raise wave.Error("Truncated PCM frame data")
     except (wave.Error, EOFError, OSError) as exc:
-        logger.warning("Rejected malformed Africa TTS WAV: %s", str(exc)[:200])
-        raise HTTPException(status_code=502, detail="Africa TTS returned an unreadable WAV file") from exc
+        logger.warning("Rejected malformed Voice model WAV: %s", str(exc)[:200])
+        raise HTTPException(status_code=502, detail="Voice model returned an unreadable WAV file") from exc
 
     scale = float(1 << (sample_width * 8 - 1))
     peak = 0.0
@@ -131,17 +131,17 @@ def inspect_generated_wav(audio: bytes) -> dict:
     rms = (sum_squares / sample_count) ** 0.5 if sample_count else 0.0
     duration_ms = int(frame_count / sample_rate * 1000)
     logger.info(
-        "Africa TTS WAV validated: duration_ms=%s rate=%s channels=%s sample_width=%s bytes=%s peak=%.6f rms=%.6f",
+        "Voice model WAV validated: duration_ms=%s rate=%s channels=%s sample_width=%s bytes=%s peak=%.6f rms=%.6f",
         duration_ms, sample_rate, channels, sample_width, len(audio), peak, rms,
     )
     if duration_ms < 100 or peak < 0.0001 or rms < 0.00001:
         logger.error(
-            "Rejected unusable Africa TTS audio: duration_ms=%s peak=%.7f rms=%.7f",
+            "Rejected unusable voice model audio: duration_ms=%s peak=%.7f rms=%.7f",
             duration_ms, peak, rms,
         )
         raise HTTPException(
             status_code=502,
-            detail="Africa TTS returned silent or incomplete audio. Nothing was saved or charged; please retry.",
+            detail="Voice model returned silent or incomplete audio. Nothing was saved or charged; please retry.",
         )
     return {
         "duration_ms": duration_ms,
@@ -224,7 +224,7 @@ async def readiness():
         "supabase_configured": bool(SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY),
         "developer_api_configured": bool(SUPABASE_SECRET_KEY),
         "legacy_voice_reference_configured": os.path.isfile(voice_path),
-        "9jalingo_configured": bool(NAIJALINGO_API_KEY),
+        "hf_model_configured": bool(HF_TTS_INFERENCE_URL and HF_TTS_INFERENCE_TOKEN),
     }
 
 
@@ -308,7 +308,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
-    if data.lang not in NAIJALINGO_LANGUAGES:
+    if data.lang not in SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=400, detail="Choose Yoruba, Hausa, Igbo, or Nigerian Pidgin.")
     timeout = httpx.Timeout(connect=15.0, read=100.0, write=45.0, pool=15.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
@@ -364,7 +364,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
         if not reserve.json().get("allowed"):
             raise HTTPException(status_code=402, detail="Monthly free character allowance exhausted")
         try:
-            audio = await synthesize_9jalingo_audio(client, text, data.lang, voice_reference)
+            audio = await synthesize_hf_model_audio(client, text, data.lang, voice_reference)
             audio_info = inspect_generated_wav(audio)
             duration_ms = audio_info["duration_ms"]
             generation_id = str(uuid.uuid4())
@@ -429,7 +429,7 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
-    if data.lang not in NAIJALINGO_LANGUAGES:
+    if data.lang not in SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=400, detail="Choose Yoruba, Hausa, Igbo, or Nigerian Pidgin.")
 
     timeout = httpx.Timeout(connect=15.0, read=100.0, write=45.0, pool=15.0)
@@ -475,7 +475,7 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
 
         try:
             started = time.monotonic()
-            audio = await synthesize_9jalingo_audio(client, text, data.lang, voice_reference)
+            audio = await synthesize_hf_model_audio(client, text, data.lang, voice_reference)
             audio_info = inspect_generated_wav(audio)
             duration_ms = audio_info["duration_ms"]
 
