@@ -143,63 +143,6 @@ function isAudioFile(file) {
   return !file.type.startsWith("video/") &&
     (file.type.startsWith("audio/") || (!["webm","3gp","mp4"].includes(extension) && AUDIO_EXTENSIONS.has(extension)));
 }
-function encodeWav16(audioBuffer) {
-  const channels = audioBuffer.numberOfChannels;
-  const frames = audioBuffer.length;
-  const bytesPerSample = 2;
-  const dataSize = frames * channels * bytesPerSample;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  const write = (offset, value) => {
-    for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
-  };
-  write(0,"RIFF");
-  view.setUint32(4,36 + dataSize,true);
-  write(8,"WAVE");
-  write(12,"fmt ");
-  view.setUint32(16,16,true);
-  view.setUint16(20,1,true);
-  view.setUint16(22,channels,true);
-  view.setUint32(24,audioBuffer.sampleRate,true);
-  view.setUint32(28,audioBuffer.sampleRate * channels * bytesPerSample,true);
-  view.setUint16(32,channels * bytesPerSample,true);
-  view.setUint16(34,16,true);
-  write(36,"data");
-  view.setUint32(40,dataSize,true);
-  let offset = 44;
-  for (let frame = 0; frame < frames; frame++) {
-    for (let channel = 0; channel < channels; channel++) {
-      const sample = Math.max(-1,Math.min(1,audioBuffer.getChannelData(channel)[frame]));
-      view.setInt16(offset,sample < 0 ? sample * 0x8000 : sample * 0x7fff,true);
-      offset += 2;
-    }
-  }
-  return new Blob([buffer],{type:"audio/wav"});
-}
-async function convertAudioToWav(file, startSeconds = 0, endSeconds = null) {
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) throw new Error("This browser cannot convert audio. Try Chrome or another modern browser.");
-  const context = new AudioContextClass();
-  try {
-    const encoded = await file.arrayBuffer();
-    const decoded = await context.decodeAudioData(encoded);
-    const sampleRate = 24000;
-    const start = Math.max(0, Math.min(decoded.duration, Number(startSeconds) || 0));
-    const end = Math.max(start, Math.min(decoded.duration, Number(endSeconds) || decoded.duration));
-    const duration = end - start;
-    const frames = Math.ceil(duration * sampleRate);
-    if (!frames || duration > 600.05) throw new Error("Select no more than 10 minutes of audio.");
-    const offline = new OfflineAudioContext(1,frames,sampleRate);
-    const source = offline.createBufferSource();
-    source.buffer = decoded;
-    source.connect(offline.destination);
-    source.start(0,start,duration);
-    const mono = await offline.startRendering();
-    return encodeWav16(mono);
-  } finally {
-    await context.close().catch(() => {});
-  }
-}
 function chooseVoiceFile() { fileInput.click(); }
 document.getElementById("add-voice-button").onclick = chooseVoiceFile;
 document.getElementById("empty-add-button").onclick = chooseVoiceFile;
@@ -323,7 +266,7 @@ fileInput.addEventListener("change", async () => {
   fileInput.value = "";
   if (!file) return;
   if (!isAudioFile(file)) return notify("Please choose an audio file. Video and non-audio files are not supported.");
-  if (file.size > 50 * 1024 * 1024) return notify("The maximum upload size is 50 MB.");
+  if (file.size > 500 * 1024 * 1024) return notify("This recording is larger than the 500 MB upload limit.");
   if (!currentSession?.user?.id) return notify("Your session expired. Please sign in again.");
   let selection;
   try {
@@ -339,13 +282,22 @@ fileInput.addEventListener("change", async () => {
   const userId = currentSession.user.id;
   let uploadedPath = null;
   try {
-    notify("Trimming and converting your selected audio…");
-    const wavFile = await convertAudioToWav(file,selection.start,selection.end);
-    uploadedPath = userId + "/" + crypto.randomUUID() + ".wav";
-    notify("Uploading your private voice sample…");
-    const {error:uploadError} = await supabase.storage.from("sonivox-voices")
-      .upload(uploadedPath,wavFile,{contentType:"audio/wav",upsert:false});
-    if (uploadError) throw new Error("Upload failed: " + uploadError.message);
+    notify("Uploading recording for server-side trimming…");
+    const {data:{session}} = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error("Your session expired. Please sign in again.");
+    const trimForm = new FormData();
+    trimForm.append("audio",file,file.name);
+    trimForm.append("start_seconds",String(selection.start));
+    trimForm.append("end_seconds",String(selection.end));
+    const trimResponse = await fetch("/api/voice/trim",{
+      method:"POST",
+      headers:{"Authorization":"Bearer " + session.access_token},
+      body:trimForm
+    });
+    const trimResult = await trimResponse.json().catch(() => ({}));
+    if (!trimResponse.ok) throw new Error(trimResult.detail || "The server could not trim this recording.");
+    uploadedPath = trimResult.sample_path;
+    if (!uploadedPath) throw new Error("The server trimmed the recording but did not return a saved audio path.");
     const {error:insertError} = await supabase.from("sonivox_voices").insert({
       user_id:userId,name:name.trim().slice(0,80),sample_path:uploadedPath,consent_confirmed:true
     });
