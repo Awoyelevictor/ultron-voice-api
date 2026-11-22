@@ -25,6 +25,53 @@ TTS_API = os.getenv(
     "https://michsethowusuwfp3--africa-tts-api-api.us-east.modal.run",
 ).rstrip("/")
 API_SECRET = os.getenv("ULTRON_VOICE_SECRET", "")
+
+HF_TTS_INFERENCE_URL = os.getenv("HF_TTS_INFERENCE_URL", "").rstrip("/")
+HF_TTS_INFERENCE_TOKEN = os.getenv("HF_TTS_INFERENCE_TOKEN", "").strip()
+SUPPORTED_LANGUAGES = {"yor": "yo", "hau": "ha", "ibo": "ig", "pcm": "pcm"}
+
+
+async def synthesize_hf_model_audio(
+    client: httpx.AsyncClient, text: str, lang: str, reference_audio: bytes
+) -> bytes:
+    """Generate cloned speech through SONIVOX's private Hugging Face model service."""
+    if not HF_TTS_INFERENCE_URL or not HF_TTS_INFERENCE_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="Hugging Face voice inference is not configured. Set HF_TTS_INFERENCE_URL and HF_TTS_INFERENCE_TOKEN.",
+        )
+    language = SUPPORTED_LANGUAGES.get(lang)
+    if not language:
+        raise HTTPException(status_code=400, detail="Choose Yoruba, Hausa, Igbo, or Nigerian Pidgin.")
+    if not reference_audio:
+        raise HTTPException(status_code=400, detail="The selected voice sample is empty.")
+
+    try:
+        response = await client.post(
+            f"{HF_TTS_INFERENCE_URL}/v1/clone",
+            headers={"Authorization": f"Bearer {HF_TTS_INFERENCE_TOKEN}"},
+            data={"text": text, "language": language},
+            files={"reference_audio": ("reference.wav", reference_audio, "audio/wav")},
+        )
+        if response.status_code in (401, 403):
+            logger.error("Hugging Face inference service rejected SONIVOX authentication")
+            raise HTTPException(status_code=503, detail="Voice inference service authentication failed.")
+        if response.status_code == 429:
+            raise HTTPException(status_code=503, detail="Voice inference service is busy. Please retry shortly.")
+        if response.status_code >= 400:
+            logger.warning("Hugging Face inference returned HTTP %s: %s", response.status_code, response.text[:300])
+            raise HTTPException(status_code=502, detail="The voice model could not generate this audio.")
+        if not response.content:
+            raise HTTPException(status_code=502, detail="The voice model returned an empty audio response.")
+        return response.content
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="Voice generation timed out.") from exc
+    except httpx.RequestError as exc:
+        logger.warning("Hugging Face inference connection failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Could not reach the voice inference service.") from exc
+
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
@@ -34,7 +81,7 @@ VOICE_BUCKET = "sonivox-voices"
 class SpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
     voice_id: str | None = None
-    lang: str = "eng"
+    lang: str = "yor"
 
 
 class LegacySpeechRequest(BaseModel):
@@ -47,7 +94,7 @@ class LegacySpeechRequest(BaseModel):
 def inspect_generated_wav(audio: bytes) -> dict:
     """Validate the complete PCM WAV and reject empty or near-silent output."""
     if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
-        raise HTTPException(status_code=502, detail="Africa TTS returned an invalid WAV file")
+        raise HTTPException(status_code=502, detail="Voice model returned an invalid WAV file")
 
     try:
         with wave.open(io.BytesIO(audio), "rb") as wav:
@@ -65,8 +112,8 @@ def inspect_generated_wav(audio: bytes) -> dict:
             if len(frames) != expected_bytes:
                 raise wave.Error("Truncated PCM frame data")
     except (wave.Error, EOFError, OSError) as exc:
-        logger.warning("Rejected malformed Africa TTS WAV: %s", str(exc)[:200])
-        raise HTTPException(status_code=502, detail="Africa TTS returned an unreadable WAV file") from exc
+        logger.warning("Rejected malformed Voice model WAV: %s", str(exc)[:200])
+        raise HTTPException(status_code=502, detail="Voice model returned an unreadable WAV file") from exc
 
     scale = float(1 << (sample_width * 8 - 1))
     peak = 0.0
@@ -84,17 +131,17 @@ def inspect_generated_wav(audio: bytes) -> dict:
     rms = (sum_squares / sample_count) ** 0.5 if sample_count else 0.0
     duration_ms = int(frame_count / sample_rate * 1000)
     logger.info(
-        "Africa TTS WAV validated: duration_ms=%s rate=%s channels=%s sample_width=%s bytes=%s peak=%.6f rms=%.6f",
+        "Voice model WAV validated: duration_ms=%s rate=%s channels=%s sample_width=%s bytes=%s peak=%.6f rms=%.6f",
         duration_ms, sample_rate, channels, sample_width, len(audio), peak, rms,
     )
     if duration_ms < 100 or peak < 0.0001 or rms < 0.00001:
         logger.error(
-            "Rejected unusable Africa TTS audio: duration_ms=%s peak=%.7f rms=%.7f",
+            "Rejected unusable voice model audio: duration_ms=%s peak=%.7f rms=%.7f",
             duration_ms, peak, rms,
         )
         raise HTTPException(
             status_code=502,
-            detail="Africa TTS returned silent or incomplete audio. Nothing was saved or charged; please retry.",
+            detail="Voice model returned silent or incomplete audio. Nothing was saved or charged; please retry.",
         )
     return {
         "duration_ms": duration_ms,
@@ -177,6 +224,7 @@ async def readiness():
         "supabase_configured": bool(SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY),
         "developer_api_configured": bool(SUPABASE_SECRET_KEY),
         "legacy_voice_reference_configured": os.path.isfile(voice_path),
+        "hf_model_configured": bool(HF_TTS_INFERENCE_URL and HF_TTS_INFERENCE_TOKEN),
     }
 
 
@@ -260,8 +308,8 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
-    if data.lang not in {"eng", "yor", "hau", "ibo", "ful"}:
-        raise HTTPException(status_code=400, detail="Unsupported language")
+    if data.lang not in SUPPORTED_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Choose Yoruba, Hausa, Igbo, or Nigerian Pidgin.")
     timeout = httpx.Timeout(connect=15.0, read=100.0, write=45.0, pool=15.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         key_row, headers = await get_api_key_owner(client, raw_key)
@@ -303,7 +351,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
         )
         if sample_response.status_code != 200:
             raise HTTPException(status_code=404, detail="Voice sample could not be loaded")
-        voice_b64 = base64.b64encode(sample_response.content).decode("ascii")
+        voice_reference = sample_response.content
         reservation_id = str(uuid.uuid4())
         reserve = await client.post(
             f"{SUPABASE_URL}/rest/v1/rpc/reserve_sonivox_characters_for_user",
@@ -316,15 +364,7 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
         if not reserve.json().get("allowed"):
             raise HTTPException(status_code=402, detail="Monthly free character allowance exhausted")
         try:
-            tts = await client.post(
-                f"{TTS_API}/v1/tts",
-                json={"text": text, "lang": data.lang, "format": "wav",
-                      "voice_wav_base64": voice_b64},
-            )
-            if tts.status_code == 429:
-                raise HTTPException(status_code=503, detail="Voice provider is busy; retry shortly")
-            tts.raise_for_status()
-            audio = tts.content
+            audio = await synthesize_hf_model_audio(client, text, data.lang, voice_reference)
             audio_info = inspect_generated_wav(audio)
             duration_ms = audio_info["duration_ms"]
             generation_id = str(uuid.uuid4())
@@ -389,8 +429,8 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
-    if data.lang not in {"eng", "yor", "hau", "ibo", "ful"}:
-        raise HTTPException(status_code=400, detail="Unsupported language")
+    if data.lang not in SUPPORTED_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Choose Yoruba, Hausa, Igbo, or Nigerian Pidgin.")
 
     timeout = httpx.Timeout(connect=15.0, read=100.0, write=45.0, pool=15.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
@@ -416,7 +456,9 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
         )
         if sample_response.status_code != 200:
             raise HTTPException(status_code=404, detail="Your voice sample could not be loaded")
-        voice_b64 = base64.b64encode(sample_response.content).decode("ascii")
+        # The provider's clone request expects original audio bytes; the adapter
+        # hex-encodes them when building the provider request.
+        voice_reference = sample_response.content
 
         reservation_id = str(uuid.uuid4())
         reserve_response = await client.post(
@@ -433,27 +475,7 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
 
         try:
             started = time.monotonic()
-            try:
-                tts_response = await client.post(
-                    f"{TTS_API}/v1/tts",
-                    json={"text": text, "lang": data.lang, "format": "wav",
-                          "voice_wav_base64": voice_b64},
-                )
-                if tts_response.status_code == 429:
-                    raise HTTPException(status_code=503, detail="Voice provider is busy. Try again shortly.")
-                tts_response.raise_for_status()
-            except HTTPException:
-                raise
-            except httpx.TimeoutException as exc:
-                raise HTTPException(status_code=504, detail="Speech generation timed out") from exc
-            except httpx.HTTPStatusError as exc:
-                logger.warning("TTS provider returned HTTP %s", exc.response.status_code)
-                raise HTTPException(status_code=502, detail="Voice provider could not generate this audio") from exc
-            except httpx.RequestError as exc:
-                logger.warning("TTS provider connection failed: %s", type(exc).__name__)
-                raise HTTPException(status_code=502, detail="Could not reach the voice provider") from exc
-
-            audio = tts_response.content
+            audio = await synthesize_hf_model_audio(client, text, data.lang, voice_reference)
             audio_info = inspect_generated_wav(audio)
             duration_ms = audio_info["duration_ms"]
 
