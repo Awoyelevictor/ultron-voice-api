@@ -434,6 +434,118 @@ async def developer_generate_speech(data: SpeechRequest, authorization: str = He
             raise
 
 
+@app.post("/v1/speech/chunk")
+async def developer_generate_speech_chunk(data: SpeechRequest, authorization: str = Header(default="")):
+    """Generate one independently playable WAV chunk for low-latency, incremental TTS clients.
+
+    Clients should send sentence-sized chunks as soon as their LLM emits them, then
+    play each returned WAV in order while the next chunk is being generated.
+    This route intentionally skips object storage and generation-history writes.
+    """
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Provide your SONIVOX API key as a Bearer token")
+    raw_key = authorization.split(" ", 1)[1].strip()
+    text = data.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Enter a text chunk first")
+    if len(text) > 1000:
+        raise HTTPException(status_code=400, detail="A speech chunk cannot exceed 1000 characters")
+    if data.lang not in AFRICA_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Unsupported language")
+
+    timeout = httpx.Timeout(connect=15.0, read=100.0, write=45.0, pool=15.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        key_row, headers = await get_api_key_owner(client, raw_key)
+        user_id = key_row["user_id"]
+        voice_id = data.voice_id
+        preset = None
+        if key_row.get("preset_id"):
+            preset_response = await client.get(
+                f"{SUPABASE_URL}/rest/v1/sonivox_voice_presets",
+                params={"id": f"eq.{key_row['preset_id']}", "user_id": f"eq.{user_id}",
+                        "select": "id,name,voice_id,settings,allow_overrides", "limit": "1"},
+                headers={**headers, "Accept": "application/json"},
+            )
+            presets = preset_response.json() if preset_response.status_code == 200 else []
+            if not presets:
+                raise HTTPException(status_code=409, detail="The voice preset linked to this API key is unavailable")
+            preset = presets[0]
+            if voice_id and not preset["allow_overrides"]:
+                raise HTTPException(status_code=403, detail="This API key is locked to its selected voice preset")
+            if not voice_id or not preset["allow_overrides"]:
+                voice_id = preset["voice_id"]
+        elif not voice_id:
+            raise HTTPException(status_code=400, detail="This API key requires voice_id or a voice preset")
+
+        voice_response = await client.get(
+            f"{SUPABASE_URL}/rest/v1/sonivox_voices",
+            params={"id": f"eq.{voice_id}", "user_id": f"eq.{user_id}",
+                    "select": "id,sample_path", "limit": "1"},
+            headers={**headers, "Accept": "application/json"},
+        )
+        voices = voice_response.json() if voice_response.status_code == 200 else []
+        if not voices:
+            raise HTTPException(status_code=404, detail="Voice profile not found for this API account")
+        sample_path = voices[0]["sample_path"]
+        if not sample_path.startswith(f"{user_id}/") or ".." in sample_path.split("/"):
+            raise HTTPException(status_code=403, detail="Invalid voice sample path")
+        sample_response = await client.get(
+            f"{SUPABASE_URL}/storage/v1/object/{VOICE_BUCKET}/{quote(sample_path, safe='/')}",
+            headers=headers,
+        )
+        if sample_response.status_code != 200:
+            raise HTTPException(status_code=404, detail="Voice sample could not be loaded")
+
+        reservation_id = str(uuid.uuid4())
+        reserve = await client.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/reserve_sonivox_characters_for_user",
+            headers={**headers, "Content-Type": "application/json"},
+            json={"p_user_id": user_id, "p_request_id": reservation_id, "p_characters": len(text)},
+        )
+        if reserve.status_code != 200:
+            logger.error("Streaming chunk reservation failed: HTTP %s", reserve.status_code)
+            raise HTTPException(status_code=503, detail="Could not verify monthly usage")
+        if not reserve.json().get("allowed"):
+            raise HTTPException(status_code=402, detail="Monthly free character allowance exhausted")
+
+        started = time.monotonic()
+        try:
+            audio = await generate_africa_audio(sample_response.content, text, data.lang)
+            audio_info = inspect_generated_wav(audio)
+            finish = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/finish_sonivox_reservation_for_user",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"p_user_id": user_id, "p_request_id": reservation_id, "p_success": True},
+            )
+            if finish.status_code != 200:
+                raise HTTPException(status_code=502, detail="Could not finalize usage reservation")
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            logger.info(
+                "SONIVOX speech chunk ready: chars=%s generation_ms=%s duration_ms=%s user=%s",
+                len(text), elapsed_ms, audio_info["duration_ms"], user_id,
+            )
+            return Response(
+                content=audio,
+                media_type="audio/wav",
+                headers={
+                    "Cache-Control": "no-store",
+                    "X-SONIVOX-Duration-Ms": str(audio_info["duration_ms"]),
+                    "X-SONIVOX-Generation-Ms": str(elapsed_ms),
+                    "X-SONIVOX-Characters": str(len(text)),
+                },
+            )
+        except Exception:
+            try:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/finish_sonivox_reservation_for_user",
+                    headers={**headers, "Content-Type": "application/json"},
+                    json={"p_user_id": user_id, "p_request_id": reservation_id, "p_success": False},
+                )
+            except Exception:
+                logger.exception("Could not release failed streaming chunk reservation")
+            raise
+
+
 @app.post("/api/speech")
 async def generate_speech(data: SpeechRequest, authorization: str = Header(default="")):
     if not authorization.lower().startswith("bearer "):
