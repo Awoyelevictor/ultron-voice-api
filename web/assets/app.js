@@ -84,9 +84,15 @@ async function loadVoices() {
       sub.textContent = "Private voice profile";
       copy.append(title,sub);
       const remove = document.createElement("button");
-      remove.className = "text-button";
+      remove.className = "text-button voice-delete-button";
+      remove.type = "button";
       remove.textContent = "Delete";
-      remove.onclick = () => deleteVoice(voice);
+      remove.setAttribute("aria-label","Delete voice profile " + voice.name);
+      remove.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteVoice(voice);
+      });
       card.append(details.firstChild,copy,remove);
       empty.append(card);
     });
@@ -363,7 +369,13 @@ fileInput.addEventListener("change", async () => {
 });
 
 async function deleteVoice(voice) {
-  if (!confirm("Delete “" + voice.name + "” and its uploaded sample?")) return;
+  const confirmation = prompt(
+    "This permanently deletes the voice profile and its sample.\n\nTo confirm, type the exact voice name:\n" + voice.name
+  );
+  if (confirmation !== voice.name) {
+    if (confirmation !== null) notify("Voice deletion cancelled. The name did not match.");
+    return;
+  }
   const {error} = await supabase.from("sonivox_voices").delete().eq("id",voice.id);
   if (error) return notify("Could not delete voice: " + error.message);
   await supabase.storage.from("sonivox-voices").remove([voice.sample_path]);
