@@ -12,7 +12,7 @@ import wave
 from urllib.parse import quote
 
 import httpx
-from gradio_client import Client
+from gradio_client import Client, handle_file
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -139,7 +139,7 @@ def _generate_africa_audio(reference_bytes: bytes, text: str, lang: str) -> byte
             reference_path = reference_file.name
         client = get_hf_client()
         # The current Space callback is exposed by Gradio as the /lambda API.
-        result = client.predict(reference_path, text, language_name, api_name="/lambda")
+        result = client.predict(handle_file(reference_path), text, language_name, api_name="/lambda")
         audio_result = result[0] if isinstance(result, (tuple, list)) else result
         if isinstance(audio_result, dict):
             audio_path = audio_result.get("path") or audio_result.get("name")
