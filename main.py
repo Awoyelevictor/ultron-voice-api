@@ -429,8 +429,8 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Enter some text first")
-    if data.lang not in {"eng", "yor", "hau", "ibo", "ful"}:
-        raise HTTPException(status_code=400, detail="Unsupported language")
+    if data.lang not in NAIJALINGO_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Choose Yoruba, Hausa, Igbo, or Nigerian Pidgin.")
 
     timeout = httpx.Timeout(connect=15.0, read=100.0, write=45.0, pool=15.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
@@ -456,7 +456,9 @@ async def generate_speech(data: SpeechRequest, authorization: str = Header(defau
         )
         if sample_response.status_code != 200:
             raise HTTPException(status_code=404, detail="Your voice sample could not be loaded")
-        voice_b64 = base64.b64encode(sample_response.content).decode("ascii")
+        # The provider's clone request expects original audio bytes; the adapter
+        # hex-encodes them when building the provider request.
+        voice_reference = sample_response.content
 
         reservation_id = str(uuid.uuid4())
         reserve_response = await client.post(
