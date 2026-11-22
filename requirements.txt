@@ -2,3 +2,4 @@ fastapi
 uvicorn[standard]
 httpx
 python-dotenv
+gradio_client>=2.0.0,<3.0.0
