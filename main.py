@@ -128,12 +128,57 @@ def get_hf_client() -> Client:
     return HF_CLIENT
 
 
+def prepare_africa_reference(reference_bytes: bytes) -> bytes:
+    """Keep the saved voice profile intact, but send Africa TTS an 8-second WAV excerpt."""
+    try:
+        with wave.open(io.BytesIO(reference_bytes), "rb") as source:
+            channels = source.getnchannels()
+            sample_width = source.getsampwidth()
+            sample_rate = source.getframerate()
+            frame_count = source.getnframes()
+            if source.getcomptype() != "NONE" or sample_rate <= 0 or channels <= 0:
+                raise wave.Error("Unsupported reference WAV format")
+            duration = frame_count / sample_rate
+            if duration < 3.0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="This voice sample is too short for Africa TTS. Use a sample at least 3 seconds long.",
+                )
+            selected_frames = min(frame_count, int(8.0 * sample_rate))
+            selected_audio = source.readframes(selected_frames)
+        prepared = io.BytesIO()
+        with wave.open(prepared, "wb") as target:
+            target.setnchannels(channels)
+            target.setsampwidth(sample_width)
+            target.setframerate(sample_rate)
+            target.writeframes(selected_audio)
+        if duration > 8.0:
+            logger.info(
+                "Prepared Africa TTS reference excerpt: original_duration=%.2fs selected_duration=%.2fs",
+                duration, selected_frames / sample_rate,
+            )
+        else:
+            logger.info("Africa TTS reference duration accepted: %.2fs", duration)
+        return prepared.getvalue()
+    except HTTPException:
+        raise
+    except (wave.Error, EOFError, OSError) as exc:
+        logger.exception("Could not prepare the saved voice sample for Africa TTS")
+        raise HTTPException(
+            status_code=422,
+            detail="The saved voice sample is not a readable WAV file. Please re-upload the voice sample.",
+        ) from exc
+
+
 def _generate_africa_audio(reference_bytes: bytes, text: str, lang: str) -> bytes:
     language_name = AFRICA_LANGUAGES.get(lang)
     if not language_name:
         raise HTTPException(status_code=400, detail="Unsupported language. Choose one of the ten Africa TTS languages.")
     reference_path = None
     try:
+        # Africa TTS requires a 3–10 second speaker reference. Keep the full
+        # user profile in storage, but pass only an 8-second excerpt to the model.
+        reference_bytes = prepare_africa_reference(reference_bytes)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as reference_file:
             reference_file.write(reference_bytes)
             reference_path = reference_file.name
