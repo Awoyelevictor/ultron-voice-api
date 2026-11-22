@@ -121,7 +121,7 @@ def get_hf_client() -> Client:
         with HF_CLIENT_LOCK:
             if HF_CLIENT is None:
                 try:
-                    HF_CLIENT = Client(HF_SPACE_ID, hf_token=HF_TOKEN, verbose=False)
+                    HF_CLIENT = Client(HF_SPACE_ID, token=HF_TOKEN, verbose=False, analytics_enabled=False)
                 except Exception as exc:
                     logger.exception("Could not connect to the private Africa TTS Space")
                     raise HTTPException(status_code=502, detail="Could not connect to the Africa TTS service. Check the Hugging Face token and Space status.") from exc
