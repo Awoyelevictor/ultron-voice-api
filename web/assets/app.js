@@ -170,7 +170,7 @@ function encodeWav16(audioBuffer) {
   }
   return new Blob([buffer],{type:"audio/wav"});
 }
-async function convertAudioToWav(file) {
+async function convertAudioToWav(file, startSeconds = 0, endSeconds = null) {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) throw new Error("This browser cannot convert audio. Try Chrome or another modern browser.");
   const context = new AudioContextClass();
@@ -178,15 +178,16 @@ async function convertAudioToWav(file) {
     const encoded = await file.arrayBuffer();
     const decoded = await context.decodeAudioData(encoded);
     const sampleRate = 24000;
-    const frames = Math.ceil(decoded.duration * sampleRate);
-    if (!frames || frames > sampleRate * 600) {
-      throw new Error("Audio must be shorter than 10 minutes.");
-    }
+    const start = Math.max(0, Math.min(decoded.duration, Number(startSeconds) || 0));
+    const end = Math.max(start, Math.min(decoded.duration, Number(endSeconds) || decoded.duration));
+    const duration = end - start;
+    const frames = Math.ceil(duration * sampleRate);
+    if (!frames || duration > 600.05) throw new Error("Select no more than 10 minutes of audio.");
     const offline = new OfflineAudioContext(1,frames,sampleRate);
     const source = offline.createBufferSource();
     source.buffer = decoded;
     source.connect(offline.destination);
-    source.start(0);
+    source.start(0,start,duration);
     const mono = await offline.startRendering();
     return encodeWav16(mono);
   } finally {
@@ -197,21 +198,143 @@ function chooseVoiceFile() { fileInput.click(); }
 document.getElementById("add-voice-button").onclick = chooseVoiceFile;
 document.getElementById("empty-add-button").onclick = chooseVoiceFile;
 document.getElementById("upload-info-button").onclick = () => notify("Choose an audio file such as WAV, MP3, M4A, AAC, OGG, FLAC or OPUS. SONIVOX converts supported audio to WAV before saving. Video files are not accepted.");
+function formatAudioTime(seconds) {
+  const total = Math.max(0,Math.floor(Number(seconds) || 0));
+  return Math.floor(total / 60) + ":" + String(total % 60).padStart(2,"0");
+}
+function showAudioTrimDialog(file) {
+  return new Promise((resolve,reject) => {
+    const url = URL.createObjectURL(file);
+    const probe = new Audio();
+    probe.preload = "metadata";
+    probe.src = url;
+    probe.addEventListener("error",() => {
+      URL.revokeObjectURL(url);
+      reject(new Error("This audio file could not be opened for trimming. Try WAV, MP3 or M4A."));
+    },{once:true});
+    probe.addEventListener("loadedmetadata",() => {
+      const duration = Number(probe.duration);
+      if (!Number.isFinite(duration) || duration <= 0) {
+        URL.revokeObjectURL(url);
+        return reject(new Error("Could not read the audio duration."));
+      }
+      const maximum = 600;
+      let start = 0;
+      let end = Math.min(duration,maximum);
+      const overlay = document.createElement("div");
+      overlay.className = "sonivox-trim-overlay";
+      const bars = Array.from({length:72},(_,i) => {
+        const h = 12 + Math.abs(Math.sin(i * 1.73) * Math.cos(i * .37)) * 58;
+        return '<i style="height:' + h.toFixed(0) + '%"></i>';
+      }).join("");
+      overlay.innerHTML = `
+        <section class="sonivox-trim-dialog" role="dialog" aria-modal="true" aria-labelledby="sonivox-trim-title">
+          <button class="sonivox-trim-close" type="button" aria-label="Cancel">×</button>
+          <div class="eyebrow">VOICE SAMPLE EDITOR</div>
+          <h2 id="sonivox-trim-title">Choose your audio segment</h2>
+          <p class="sonivox-trim-description">Drag the two handles to select the part of the recording you want to use.</p>
+          <div class="sonivox-trim-file"><span>♫</span><div><strong></strong><small></small></div></div>
+          <div class="sonivox-trim-timeline">
+            <div class="sonivox-trim-wave">${bars}</div>
+            <div class="sonivox-trim-selection"></div>
+            <input class="sonivox-trim-range sonivox-trim-start" type="range" min="0" max="${duration}" step="0.1" value="0" aria-label="Selection start">
+            <input class="sonivox-trim-range sonivox-trim-end" type="range" min="0" max="${duration}" step="0.1" value="${end}" aria-label="Selection end">
+          </div>
+          <div class="sonivox-trim-times"><span>Start <strong class="sonivox-start-label">0:00</strong></span><span>End <strong class="sonivox-end-label"></strong></span></div>
+          <div class="sonivox-trim-summary"><span>Selected duration</span><strong class="sonivox-duration-label"></strong><small>Maximum selection: 10:00</small></div>
+          <audio class="sonivox-trim-preview-audio" controls preload="none"></audio>
+          <div class="sonivox-trim-actions"><button class="secondary-button sonivox-trim-preview" type="button">▶ Preview selection</button><button class="primary-button sonivox-trim-use" type="button">Use this audio →</button></div>
+          <p class="sonivox-trim-hint">Original file: ${formatAudioTime(duration)} · Only the selected segment will be uploaded.</p>
+        </section>`;
+      document.body.appendChild(overlay);
+      const dialog = overlay.querySelector(".sonivox-trim-dialog");
+      const startInput = overlay.querySelector(".sonivox-trim-start");
+      const endInput = overlay.querySelector(".sonivox-trim-end");
+      const selection = overlay.querySelector(".sonivox-trim-selection");
+      const startLabel = overlay.querySelector(".sonivox-start-label");
+      const endLabel = overlay.querySelector(".sonivox-end-label");
+      const durationLabel = overlay.querySelector(".sonivox-duration-label");
+      const preview = overlay.querySelector(".sonivox-trim-preview-audio");
+      const fileCopy = overlay.querySelector(".sonivox-trim-file");
+      fileCopy.querySelector("strong").textContent = file.name;
+      fileCopy.querySelector("small").textContent = formatAudioTime(duration) + " · " + (file.size / 1024 / 1024).toFixed(1) + " MB";
+      preview.src = url;
+      const cleanup = value => {
+        preview.pause();
+        URL.revokeObjectURL(url);
+        overlay.remove();
+        resolve(value);
+      };
+      const update = () => {
+        startInput.value = String(start);
+        endInput.value = String(end);
+        const left = start / duration * 100;
+        const right = end / duration * 100;
+        selection.style.left = left + "%";
+        selection.style.width = (right - left) + "%";
+        startLabel.textContent = formatAudioTime(start);
+        endLabel.textContent = formatAudioTime(end);
+        durationLabel.textContent = formatAudioTime(end - start);
+      };
+      startInput.addEventListener("input",() => {
+        start = Math.max(0,Math.min(Number(startInput.value),duration - 1));
+        if (end - start > maximum) end = start + maximum;
+        if (end > duration) { end = duration; start = Math.max(0,end - maximum); }
+        if (end - start < 1) end = Math.min(duration,start + 1);
+        preview.pause();
+        update();
+      });
+      endInput.addEventListener("input",() => {
+        end = Math.max(1,Math.min(Number(endInput.value),duration));
+        if (end - start > maximum) start = end - maximum;
+        if (end - start < 1) start = Math.max(0,end - 1);
+        preview.pause();
+        update();
+      });
+      overlay.querySelector(".sonivox-trim-preview").onclick = async () => {
+        preview.currentTime = start;
+        try { await preview.play(); } catch { notify("Tap the audio player to start preview."); }
+      };
+      preview.addEventListener("timeupdate",() => {
+        if (preview.currentTime >= end) preview.pause();
+      });
+      overlay.querySelector(".sonivox-trim-use").onclick = () => cleanup({start,end});
+      overlay.querySelector(".sonivox-trim-close").onclick = () => cleanup(null);
+      overlay.addEventListener("click",event => { if (event.target === overlay) cleanup(null); });
+      const escapeHandler = event => {
+        if (event.key === "Escape" && document.body.contains(overlay)) {
+          cleanup(null);
+          document.removeEventListener("keydown",escapeHandler);
+        }
+      };
+      document.addEventListener("keydown",escapeHandler);
+      update();
+    },{once:true});
+  });
+}
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files?.[0];
   fileInput.value = "";
   if (!file) return;
   if (!isAudioFile(file)) return notify("Please choose an audio file. Video and non-audio files are not supported.");
   if (file.size > 50 * 1024 * 1024) return notify("The maximum upload size is 50 MB.");
+  if (!currentSession?.user?.id) return notify("Your session expired. Please sign in again.");
+  let selection;
+  try {
+    notify("Reading audio duration…");
+    selection = await showAudioTrimDialog(file);
+  } catch (error) {
+    return notify(error.message || "Could not open this audio file.");
+  }
+  if (!selection) return;
   const name = prompt("Give this voice profile a name:");
   if (!name?.trim()) return;
   if (!confirm("Confirm that this is your voice or you have explicit permission from the speaker to use and generate speech with it.")) return;
-  if (!currentSession?.user?.id) return notify("Your session expired. Please sign in again.");
   const userId = currentSession.user.id;
   let uploadedPath = null;
   try {
-    notify("Preparing and converting your audio…");
-    const wavFile = await convertAudioToWav(file);
+    notify("Trimming and converting your selected audio…");
+    const wavFile = await convertAudioToWav(file,selection.start,selection.end);
     uploadedPath = userId + "/" + crypto.randomUUID() + ".wav";
     notify("Uploading your private voice sample…");
     const {error:uploadError} = await supabase.storage.from("sonivox-voices")
@@ -226,14 +349,14 @@ fileInput.addEventListener("change", async () => {
       throw new Error("The audio uploaded, but the voice profile could not be saved: " + insertError.message);
     }
     uploadedPath = null;
-    notify("Audio converted and voice profile saved.");
+    notify("Trimmed audio converted and voice profile saved.");
     await loadVoices();
     await loadStats();
     showPage("voices");
   } catch (error) {
     const message = error?.message || String(error) || "Unknown upload error.";
     console.error("SONIVOX voice upload failed:", error);
-    notify(message.startsWith("Upload failed:") || message.startsWith("The audio uploaded,") || message.startsWith("This browser") || message.startsWith("Audio must")
+    notify(message.startsWith("Upload failed:") || message.startsWith("The audio uploaded,") || message.startsWith("This browser") || message.startsWith("Select no more")
       ? message
       : "Could not add this voice: " + message);
   }
