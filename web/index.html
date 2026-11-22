@@ -45,7 +45,7 @@
             <div class="panel-heading"><div><div class="eyebrow">SPEECH PLAYGROUND</div><h2>Turn text into speech</h2></div><span class="soft-tag">CREATE</span></div>
             <label class="field-label" for="speech-text">YOUR SCRIPT <span id="char-count">0 / 1,000</span></label>
             <textarea id="speech-text" maxlength="1000" placeholder="Type or paste something you want to hear…"></textarea>
-            <div class="field-row"><div class="field-group"><label class="field-label" for="voice-select">VOICE</label><select id="voice-select"><option value="">Add a voice profile first</option></select></div><div class="field-group"><label class="field-label" for="language-select">LANGUAGE</label><select id="language-select"><option value="eng">English</option><option value="yor">Yoruba</option><option value="hau">Hausa</option><option value="ibo">Igbo</option><option value="ful">Fulfulde</option></select></div></div>
+            <div class="field-row"><div class="field-group"><label class="field-label" for="voice-select">VOICE</label><select id="voice-select"><option value="">Add a voice profile first</option></select></div><div class="field-group"><label class="field-label" for="language-select">LANGUAGE</label><select id="language-select"><option value="eng">English</option><option value="yor">Yoruba</option><option value="hau">Hausa</option><option value="ibo">Igbo</option><option value="twi">Twi</option><option value="swh">Swahili</option><option value="zul">Zulu</option><option value="sna">Shona</option><option value="ewe">Ewe</option><option value="amh">Amharic</option></select></div></div>
             <button class="primary-button full-button" id="generate-button" disabled><span>✦</span> Generate speech <span class="button-arrow">→</span></button>
             <p class="microcopy">Only use voice samples you own or are explicitly authorized to use.</p>
           </section>
@@ -111,7 +111,7 @@ Content-Type: application/json</code></pre>
 
           <h3>3. Supported languages</h3>
           <div class="docs-language-grid">
-            <span><b>eng</b> English</span><span><b>yor</b> Yoruba</span><span><b>hau</b> Hausa</span><span><b>ibo</b> Igbo</span><span><b>ful</b> Fulfulde</span>
+            <span><b>eng</b> English</span><span><b>yor</b> Yoruba</span><span><b>hau</b> Hausa</span><span><b>ibo</b> Igbo</span><span><b>twi</b> Twi</span><span><b>swh</b> Swahili</span><span><b>zul</b> Zulu</span><span><b>sna</b> Shona</span><span><b>ewe</b> Ewe</span><span><b>amh</b> Amharic</span>
           </div>
           <p>Use the three-letter language codes exactly as shown. For example, use <code>eng</code>, not <code>en</code>.</p>
 
@@ -223,7 +223,7 @@ print(result["audio_url"])</code></pre>
 
           <h3>9. Common errors</h3>
           <div class="docs-table-wrap"><table class="docs-table"><thead><tr><th>HTTP status</th><th>Meaning</th><th>What to check</th></tr></thead><tbody>
-            <tr><td>400</td><td>Text is blank after trimming, or the language code is unsupported</td><td>Send non-empty text and use one of <code>eng</code>, <code>yor</code>, <code>hau</code>, <code>ibo</code> or <code>ful</code>.</td></tr>
+            <tr><td>400</td><td>Text is blank after trimming, or the language code is unsupported</td><td>Send non-empty text and use one of the ten language codes listed above.</td></tr>
             <tr><td>401</td><td>Missing, invalid or revoked key</td><td>Check the Bearer header and confirm the key is active.</td></tr>
             <tr><td>402</td><td>Monthly character allowance exhausted</td><td>Check the usage balance in your SONIVOX dashboard.</td></tr>
             <tr><td>403</td><td>Voice override is not permitted, or the sample path is invalid</td><td>Remove <code>voice_id</code> for a locked preset, or enable overrides on the preset.</td></tr>
