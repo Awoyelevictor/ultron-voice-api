@@ -3,6 +3,5 @@ uvicorn[standard]
 httpx
 python-dotenv
 gradio_client>=2.0.0,<3.0.0
-av>=14.0.0
-numpy>=1.26.0
 python-multipart>=0.0.9
+imageio-ffmpeg>=0.5.1

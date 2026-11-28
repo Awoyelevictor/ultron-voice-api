@@ -4,6 +4,8 @@ import io
 import hashlib
 import logging
 import os
+import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -484,68 +486,98 @@ MAX_VOICE_SOURCE_BYTES = 500 * 1024 * 1024
 
 
 def _trim_uploaded_audio(source_file, start_seconds: float, end_seconds: float) -> bytes:
-    """Seek into the uploaded source and export only the selected segment as 24 kHz mono PCM WAV."""
+    """Decode any supported source with bundled FFmpeg and export 24 kHz mono PCM WAV."""
     try:
-        import av
-        import numpy as np
+        import imageio_ffmpeg
     except ImportError as exc:
-        logger.exception("Server-side audio trimming dependencies are unavailable")
-        raise HTTPException(status_code=503, detail="The audio trimming service is not ready. Please try again later.") from exc
+        logger.exception("Bundled FFmpeg audio decoder is unavailable")
+        raise HTTPException(status_code=503, detail="The audio processing service is not ready. Please try again later.") from exc
 
     if start_seconds < 0 or end_seconds <= start_seconds or end_seconds - start_seconds > 600:
         raise HTTPException(status_code=400, detail="Select a segment between 1 second and 10 minutes.")
-    output = io.BytesIO()
+
     try:
-        with av.open(source_file) as container:
-            audio_stream = next((stream for stream in container.streams if stream.type == "audio"), None)
-            if audio_stream is None:
-                raise HTTPException(status_code=400, detail="The uploaded file contains no audio track.")
-            if container.duration and end_seconds > (container.duration / av.time_base) + 1:
-                raise HTTPException(status_code=400, detail="The selected end time is beyond the recording duration.")
-            container.seek(int(start_seconds / float(audio_stream.time_base)), stream=audio_stream, backward=True, any_frame=False)
-            resampler = av.AudioResampler(format="s16", layout="mono", rate=24000)
-            with wave.open(output, "wb") as wav:
-                wav.setnchannels(1)
-                wav.setsampwidth(2)
-                wav.setframerate(24000)
-                written = 0
-                for decoded in container.decode(audio_stream):
-                    converted = resampler.resample(decoded)
-                    for frame in converted:
-                        if frame.pts is None or frame.time_base is None:
-                            continue
-                        frame_start = float(frame.pts * frame.time_base)
-                        samples = frame.to_ndarray().reshape(-1)
-                        left = max(0, int((start_seconds - frame_start) * 24000 + 0.999999))
-                        right = min(len(samples), int((end_seconds - frame_start) * 24000 + 0.999999))
-                        if right > left:
-                            chunk = samples[left:right].astype(np.int16, copy=False).tobytes()
-                            wav.writeframesraw(chunk)
-                            written += right - left
-                        if frame_start >= end_seconds:
-                            break
-                    if frame.time is not None and float(frame.time) >= end_seconds:
-                        break
-                for frame in resampler.resample(None):
-                    if frame.pts is None or frame.time_base is None:
-                        continue
-                    frame_start = float(frame.pts * frame.time_base)
-                    samples = frame.to_ndarray().reshape(-1)
-                    left = max(0, int((start_seconds - frame_start) * 24000 + 0.999999))
-                    right = min(len(samples), int((end_seconds - frame_start) * 24000 + 0.999999))
-                    if right > left:
-                        chunk = samples[left:right].astype(np.int16, copy=False).tobytes()
-                        wav.writeframesraw(chunk)
-                        written += right - left
-                if written < 24000:
-                    raise HTTPException(status_code=422, detail="The selected segment contains less than one second of readable audio.")
-        return output.getvalue()
+        source_file.seek(0)
+        with tempfile.TemporaryDirectory(prefix="sonivox-audio-") as temp_dir:
+            source_path = os.path.join(temp_dir, "source.audio")
+            output_path = os.path.join(temp_dir, "trimmed.wav")
+            with open(source_path, "wb") as saved_source:
+                shutil.copyfileobj(source_file, saved_source, length=1024 * 1024)
+
+            command = [
+                imageio_ffmpeg.get_ffmpeg_exe(),
+                "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
+                "-i", source_path,
+                "-map", "0:a:0", "-vn", "-sn", "-dn",
+                "-af",
+                f"atrim=start={start_seconds:.3f}:end={end_seconds:.3f},asetpts=PTS-STARTPTS",
+                "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le",
+                output_path,
+            ]
+            result = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=180,
+                check=False,
+            )
+            if result.returncode != 0:
+                decoder_message = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+                logger.warning(
+                    "FFmpeg could not decode uploaded voice sample (exit=%s): %s",
+                    result.returncode,
+                    decoder_message[:500],
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail="Could not decode this audio file. The file may be damaged or use an unsupported codec. Try a standard MP3, M4A or WAV file.",
+                )
+
+            if not os.path.isfile(output_path) or os.path.getsize(output_path) < 44:
+                raise HTTPException(
+                    status_code=422,
+                    detail="The selected segment contains no readable audio. Choose a different section and try again.",
+                )
+
+            with open(output_path, "rb") as trimmed_file:
+                wav_bytes = trimmed_file.read()
+
+        with wave.open(io.BytesIO(wav_bytes), "rb") as trimmed:
+            channels = trimmed.getnchannels()
+            sample_rate = trimmed.getframerate()
+            sample_width = trimmed.getsampwidth()
+            frame_count = trimmed.getnframes()
+            if channels != 1 or sample_rate != 24000 or sample_width != 2 or frame_count <= 0:
+                raise wave.Error("FFmpeg output is not mono 24 kHz PCM16")
+            duration = frame_count / sample_rate
+            if duration < 3.0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Choose at least 3 seconds of clear speech. The selected segment was too short or contained too little readable audio.",
+                )
+            if duration > 600.5:
+                raise wave.Error("Trimmed audio exceeded the 10-minute limit")
+
+        logger.info(
+            "Voice sample decoded and trimmed: duration=%.2fs bytes=%s format=wav rate=24000 channels=1",
+            duration,
+            len(wav_bytes),
+        )
+        return wav_bytes
     except HTTPException:
         raise
+    except subprocess.TimeoutExpired as exc:
+        logger.warning("FFmpeg audio trimming timed out")
+        raise HTTPException(
+            status_code=422,
+            detail="Audio processing took too long. Try a shorter recording.",
+        ) from exc
     except Exception as exc:
-        logger.exception("Server-side audio trim failed")
-        raise HTTPException(status_code=422, detail="Could not decode this audio file. Try exporting it as MP3, M4A or WAV.") from exc
-
+        logger.exception("FFmpeg audio trim failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=422,
+            detail="Could not decode this audio file. The file may be damaged or use an unsupported codec. Try a standard MP3, M4A or WAV file.",
+        ) from exc
 
 @app.post("/api/voice/trim")
 async def trim_voice_sample(

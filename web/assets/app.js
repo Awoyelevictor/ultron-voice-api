@@ -167,6 +167,11 @@ function showAudioTrimDialog(file) {
         URL.revokeObjectURL(url);
         return reject(new Error("Could not read the audio duration."));
       }
+      const minimum = 3;
+      if (duration < minimum) {
+        URL.revokeObjectURL(url);
+        return reject(new Error("Use a recording with at least 3 seconds of clear speech."));
+      }
       const maximum = 600;
       let start = 0;
       let end = Math.min(duration,maximum);
@@ -181,7 +186,7 @@ function showAudioTrimDialog(file) {
           <button class="sonivox-trim-close" type="button" aria-label="Cancel">×</button>
           <div class="eyebrow">VOICE SAMPLE EDITOR</div>
           <h2 id="sonivox-trim-title">Choose your audio segment</h2>
-          <p class="sonivox-trim-description">Drag the two handles to select the part of the recording you want to use.</p>
+          <p class="sonivox-trim-description">Select at least 3 seconds of clear speech. The Africa TTS engine uses up to 8 seconds from your sample.</p>
           <div class="sonivox-trim-file"><span>♫</span><div><strong></strong><small></small></div></div>
           <div class="sonivox-trim-timeline">
             <div class="sonivox-trim-wave">${bars}</div>
@@ -190,7 +195,7 @@ function showAudioTrimDialog(file) {
             <input class="sonivox-trim-range sonivox-trim-end" type="range" min="0" max="${duration}" step="0.1" value="${end}" aria-label="Selection end">
           </div>
           <div class="sonivox-trim-times"><span>Start <strong class="sonivox-start-label">0:00</strong></span><span>End <strong class="sonivox-end-label"></strong></span></div>
-          <div class="sonivox-trim-summary"><span>Selected duration</span><strong class="sonivox-duration-label"></strong><small>Maximum selection: 10:00</small></div>
+          <div class="sonivox-trim-summary"><span>Selected duration</span><strong class="sonivox-duration-label"></strong><small>Minimum: 0:03 · Maximum: 10:00</small></div>
           <audio class="sonivox-trim-preview-audio" controls preload="none"></audio>
           <div class="sonivox-trim-actions"><button class="secondary-button sonivox-trim-preview" type="button">▶ Preview selection</button><button class="primary-button sonivox-trim-use" type="button">Use this audio →</button></div>
           <p class="sonivox-trim-hint">Original file: ${formatAudioTime(duration)} · Only the selected segment will be uploaded.</p>
@@ -226,17 +231,17 @@ function showAudioTrimDialog(file) {
         durationLabel.textContent = formatAudioTime(end - start);
       };
       startInput.addEventListener("input",() => {
-        start = Math.max(0,Math.min(Number(startInput.value),duration - 1));
+        start = Math.max(0,Math.min(Number(startInput.value),duration - minimum));
         if (end - start > maximum) end = start + maximum;
         if (end > duration) { end = duration; start = Math.max(0,end - maximum); }
-        if (end - start < 1) end = Math.min(duration,start + 1);
+        if (end - start < minimum) end = Math.min(duration,start + minimum);
         preview.pause();
         update();
       });
       endInput.addEventListener("input",() => {
-        end = Math.max(1,Math.min(Number(endInput.value),duration));
+        end = Math.max(minimum,Math.min(Number(endInput.value),duration));
         if (end - start > maximum) start = end - maximum;
-        if (end - start < 1) start = Math.max(0,end - 1);
+        if (end - start < minimum) start = Math.max(0,end - minimum);
         preview.pause();
         update();
       });
